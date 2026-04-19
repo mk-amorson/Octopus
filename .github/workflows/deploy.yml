@@ -86,3 +86,15 @@ jobs:
             else
               echo "scripts/server-deploy.sh not found or not executable; skipping hook."
             fi
+
+      - name: External reachability check
+        run: |
+          set +e
+          echo "==== dns from runner ===="
+          getent hosts amorson.me || true
+          echo "==== http (follow redirects) ===="
+          curl -sSI -L --max-time 15 http://amorson.me/ | head -20
+          echo "==== https ===="
+          curl -sSI --max-time 15 https://amorson.me/ | head -20
+          echo "==== https body (first 200 bytes) ===="
+          curl -sS --max-time 15 https://amorson.me/ | head -c 200; echo
