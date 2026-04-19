@@ -1,0 +1,18 @@
+# Octopus / amorson.me reverse proxy.
+# Auto-HTTPS via Let's Encrypt. Only the apex domain — no www.
+
+{
+	email admin@amorson.me
+}
+
+amorson.me {
+	encode zstd gzip
+
+	# OpenClaw panel goes here once deployed. Uncomment and tune the
+	# upstream when ready:
+	#
+	# reverse_proxy 127.0.0.1:8080
+
+	# Temporary placeholder until OpenClaw is live.
+	respond "Octopus online" 200
+}
