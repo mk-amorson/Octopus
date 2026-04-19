@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Patch OpenClaw config so the Control UI works behind the Caddy reverse
-# proxy on https://amorson.me. Idempotent — safe to run multiple times.
+# proxy on https://claw.amorson.me. Idempotent — safe to re-run.
 
 set -euo pipefail
 
 CFG="${OPENCLAW_CONFIG:-$HOME/.openclaw/openclaw.json}"
-ORIGIN="${OPENCLAW_PUBLIC_ORIGIN:-https://amorson.me}"
+ORIGIN="${OPENCLAW_PUBLIC_ORIGIN:-https://claw.amorson.me}"
 TRUSTED="${OPENCLAW_TRUSTED_PROXY:-127.0.0.1/32}"
 
 if [ ! -f "$CFG" ]; then

@@ -84,7 +84,7 @@ configure_openclaw() {
 		home=$(getent passwd "$u" | cut -d: -f6)
 		[ -n "$home" ] && [ -f "$home/.openclaw/openclaw.json" ] || continue
 		echo "[deploy] patching OpenClaw config for user $u"
-		sudo -u "$u" -H OPENCLAW_PUBLIC_ORIGIN="https://amorson.me" "$PWD/$script" || \
+		sudo -u "$u" -H OPENCLAW_PUBLIC_ORIGIN="https://claw.amorson.me" "$PWD/$script" || \
 			echo "[deploy] WARN: configure-openclaw.sh failed for $u" >&2
 	done
 }
