@@ -38,4 +38,8 @@ And optionally under **Variables**:
 
 Stack-specific deploy steps (install, build, restart) live in
 `scripts/server-deploy.sh`. It runs on the server after each successful sync.
-Edit it as the project grows — the current version is a no-op placeholder.
+
+Currently it installs [Caddy](https://caddyserver.com/) if missing and applies
+`ops/Caddyfile`, which terminates HTTPS for `amorson.me` (auto Let's Encrypt).
+To route the domain to an app (e.g. OpenClaw panel on `127.0.0.1:8080`),
+uncomment the `reverse_proxy` line in `ops/Caddyfile` and push to `main`.
