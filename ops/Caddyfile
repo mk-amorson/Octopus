@@ -8,11 +8,9 @@
 amorson.me {
 	encode zstd gzip
 
-	# OpenClaw panel goes here once deployed. Uncomment and tune the
-	# upstream when ready:
-	#
-	# reverse_proxy 127.0.0.1:8080
-
-	# Temporary placeholder until OpenClaw is live.
-	respond "Octopus online" 200
+	# OpenClaw Control UI + Gateway WebSocket. Caddy v2 forwards the
+	# Upgrade/Connection headers for WebSocket automatically, so no extra
+	# header_up directives are needed. OpenClaw itself must be configured
+	# to trust this proxy and accept the public origin — see README.
+	reverse_proxy 127.0.0.1:18789
 }
