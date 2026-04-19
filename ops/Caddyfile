@@ -1,21 +1,11 @@
-# Octopus reverse proxy for amorson.me and its subdomains.
+# Octopus reverse proxy.
 # Auto-HTTPS via Let's Encrypt.
 
 {
 	email admin@amorson.me
 }
 
-# Apex — reserved for other projects; placeholder for now.
 amorson.me {
 	encode zstd gzip
 	respond "Octopus online" 200
-}
-
-# OpenClaw Control UI + Gateway WebSocket. Caddy v2 forwards the Upgrade/
-# Connection headers for WebSocket automatically, so no extra header_up
-# directives are needed. OpenClaw must be configured to trust this proxy
-# and accept the public origin (see scripts/configure-openclaw.sh).
-claw.amorson.me {
-	encode zstd gzip
-	reverse_proxy 127.0.0.1:18789
 }

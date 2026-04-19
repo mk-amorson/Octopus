@@ -73,22 +73,11 @@ install_caddy
 sync_caddyfile
 open_http_ports
 
-# Patch OpenClaw config so the Control UI accepts connections via Caddy.
-# Idempotent — runs every deploy, no-op once keys are set. Targets common
-# install users; add more if OpenClaw is owned by a different one.
-configure_openclaw() {
-	local script="scripts/configure-openclaw.sh"
-	[ -x "$script" ] || return 0
-	for u in root ubuntu debian; do
-		local home
-		home=$(getent passwd "$u" | cut -d: -f6)
-		[ -n "$home" ] && [ -f "$home/.openclaw/openclaw.json" ] || continue
-		echo "[deploy] patching OpenClaw config for user $u"
-		sudo -u "$u" -H OPENCLAW_PUBLIC_ORIGIN="https://claw.amorson.me" "$PWD/$script" || \
-			echo "[deploy] WARN: configure-openclaw.sh failed for $u" >&2
-	done
-}
-configure_openclaw
+# Purge any leftover OpenClaw install. Idempotent — after the first
+# successful run this is effectively a no-op.
+if [ -x scripts/purge-openclaw.sh ]; then
+	./scripts/purge-openclaw.sh || echo "[deploy] WARN: purge-openclaw.sh had non-zero steps" >&2
+fi
 
 # Give Caddy time to settle and complete at least one cert issuance attempt.
 sleep 25
