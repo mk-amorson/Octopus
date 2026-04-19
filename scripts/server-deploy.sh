@@ -28,16 +28,12 @@ sync_caddyfile() {
 	local dst="/etc/caddy/Caddyfile"
 	[ -f "$src" ] || { echo "[deploy] $src missing; skipping Caddy config"; return; }
 	mkdir -p "$(dirname "$dst")"
-	if ! cmp -s "$src" "$dst"; then
-		echo "[deploy] updating $dst"
-		install -m 0644 "$src" "$dst"
-		systemctl enable --now caddy >/dev/null 2>&1 || true
-		caddy validate --config "$dst" --adapter caddyfile
-		systemctl reload caddy
-	else
-		echo "[deploy] $dst already up to date"
-		systemctl enable --now caddy >/dev/null 2>&1 || true
-	fi
+	install -m 0644 "$src" "$dst"
+	systemctl enable caddy >/dev/null 2>&1 || true
+	caddy validate --config "$dst" --adapter caddyfile
+	# Restart (not reload) so Caddy drops any in-memory ACME backoff state
+	# and retries cert issuance from scratch on every deploy.
+	systemctl restart caddy
 }
 
 # If ufw is installed and active, make sure 80/443 are reachable. Anything
@@ -77,8 +73,8 @@ install_caddy
 sync_caddyfile
 open_http_ports
 
-# Give Caddy a beat to settle / issue a cert on first run.
-sleep 5
+# Give Caddy time to settle and complete at least one cert issuance attempt.
+sleep 25
 dump_diagnostics
 
 echo "[deploy] done"
