@@ -40,7 +40,45 @@ sync_caddyfile() {
 	fi
 }
 
+# If ufw is installed and active, make sure 80/443 are reachable. Anything
+# else about the firewall is left to the operator.
+open_http_ports() {
+	if command -v ufw >/dev/null 2>&1 && ufw status | grep -qi "Status: active"; then
+		echo "[deploy] ensuring ufw allows 80/tcp and 443/tcp"
+		ufw allow 80/tcp  >/dev/null || true
+		ufw allow 443/tcp >/dev/null || true
+	fi
+}
+
+# Emit diagnostics into the Actions log so Caddy/TLS state is visible without
+# shelling into the server. All commands are best-effort.
+dump_diagnostics() {
+	echo "==== caddy status ===="
+	systemctl is-active caddy || true
+	systemctl is-enabled caddy || true
+
+	echo "==== ss -tlnp (80/443) ===="
+	ss -tlnp 2>/dev/null | awk 'NR==1 || /:80 |:443 /' || true
+
+	echo "==== caddy journal (last 80 lines) ===="
+	journalctl -u caddy --no-pager -n 80 -o cat 2>/dev/null || true
+
+	echo "==== self-check http ===="
+	curl -sSI -m 5 -H "Host: amorson.me" http://127.0.0.1/ 2>&1 | head -5 || true
+
+	echo "==== self-check https ===="
+	curl -skSI -m 10 --resolve amorson.me:443:127.0.0.1 https://amorson.me/ 2>&1 | head -10 || true
+
+	echo "==== dns as seen from server ===="
+	getent hosts amorson.me || true
+}
+
 install_caddy
 sync_caddyfile
+open_http_ports
+
+# Give Caddy a beat to settle / issue a cert on first run.
+sleep 5
+dump_diagnostics
 
 echo "[deploy] done"
