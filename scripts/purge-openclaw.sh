@@ -18,12 +18,27 @@ for u in "${units[@]}"; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
 
-# Kill anything still calling itself openclaw.
+# Kill anything still calling itself openclaw. pgrep -f matches the full
+# command line, which would also hit this very script (path contains
+# "openclaw"), so we exclude our own pid/ppid and anything whose cmdline
+# points at purge-openclaw.
+kill_openclaw_procs() {
+	local sig="$1" pid cmdline
+	local mypid=$$ parentpid=$PPID
+	for pid in $(pgrep -f openclaw 2>/dev/null); do
+		[ "$pid" = "$mypid" ] && continue
+		[ "$pid" = "$parentpid" ] && continue
+		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+		case "$cmdline" in *purge-openclaw*) continue ;; esac
+		kill "$sig" "$pid" 2>/dev/null || true
+	done
+}
+
 if pgrep -f openclaw >/dev/null 2>&1; then
 	echo "[purge-openclaw] killing running openclaw processes"
-	pkill -f openclaw >/dev/null 2>&1 || true
+	kill_openclaw_procs -TERM
 	sleep 2
-	pkill -9 -f openclaw >/dev/null 2>&1 || true
+	kill_openclaw_procs -KILL
 fi
 
 # Wipe per-user data directories.
