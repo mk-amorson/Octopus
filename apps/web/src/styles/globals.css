@@ -6,11 +6,17 @@
   color-scheme: dark;
 }
 
+/* Lock the viewport to the visible area. 100dvh tracks the dynamic
+   viewport height on mobile browsers (URL bar showing vs hidden); older
+   engines that don't understand it fall back to the static 100% above. */
 html,
 body {
   background: #000;
   color: #fff;
-  min-height: 100%;
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  overflow: hidden;
 }
 
 body {
