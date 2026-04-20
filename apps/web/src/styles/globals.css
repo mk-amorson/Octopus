@@ -17,8 +17,8 @@ body {
   font-family: theme("fontFamily.sans");
 }
 
-/* basis33 is a pixel font — keep edges crisp, don't smooth them. */
-.font-basis33 {
+/* octopus-pixel is a pixel font — keep edges crisp, don't smooth them. */
+.font-pixel {
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
   font-smooth: never;

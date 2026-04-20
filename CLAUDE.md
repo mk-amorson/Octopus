@@ -55,8 +55,8 @@ TypeScript config is layered: `tsconfig.base.json` at the repo root defines stri
 
 Next.js 14 App Router + React 18 + Tailwind. Today it is a single-page landing site that renders "Octopus" in a bundled pixel font (`basis33`). Key conventions:
 
-- `src/app/layout.tsx` loads `basis33.ttf` via `next/font/local` and exposes it as the `--font-basis33` CSS var → `font-basis33` Tailwind utility. `globals.css` disables font smoothing for that class to keep the pixel font crisp.
-- `next.config.mjs` reads `OCTOPUS_BASE_PATH` at build time and feeds it into Next's `basePath`. The installer passes this value via `--build-arg OCTOPUS_BASE_PATH=...` when it runs `docker compose build`. Default is `""` (site root).
+- `src/app/layout.tsx` loads `octopus-pixel.ttf` via `next/font/local` and exposes it as the `--font-octopus-pixel` CSS var → `font-pixel` Tailwind utility. `globals.css` disables font smoothing for that class to keep the pixel font crisp. `octopus-pixel.ttf` is a derivative of `basis33.ttf` (MIT) — letters are proportional with exactly one "pixel" (192 font-units) of horizontal gap; digits stay monospace.
+- `next.config.mjs` reads `OCTOPUS_BASE_PATH` at build time and feeds it into Next's `basePath`. The installer passes this value via `--build-arg OCTOPUS_BASE_PATH=...` when it runs `docker compose build`. Default is `""` (site root). The installer also passes `OCTOPUS_VERSION`, which is baked in as `NEXT_PUBLIC_OCTOPUS_VERSION` and shown under the logo so users can see which release they're on.
 - `next.config.mjs` also sets `output: "standalone"` and points `experimental.outputFileTracingRoot` at the monorepo root so the standalone bundle captures the correct slice of root `node_modules`. **Do not remove** — the Dockerfile depends on the path `apps/web/server.js`.
 - Dark theme is baked in via `color-scheme: dark` and hard-coded black/white in `globals.css`.
 
