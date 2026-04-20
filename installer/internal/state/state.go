@@ -16,8 +16,8 @@ type Config struct {
 	Version  string `json:"version"`
 	BasePath string `json:"base_path"`        // e.g. "/octopus" or "" (root)
 	Host     string `json:"host"`             // "127.0.0.1" or "0.0.0.0"
-	Port     int    `json:"port"`             // host-side port, container is always 3000
-	Domain   string `json:"domain,omitempty"` // optional: auto-Caddy target, e.g. "amorson.me"
+	Port     int    `json:"port"`             // host-side port; container listens on ContainerPort
+	Domain   string `json:"domain,omitempty"` // optional: auto-Caddy target, e.g. "example.com"
 }
 
 // URL returns the user-facing URL of the running instance. When a domain
@@ -130,6 +130,15 @@ const ComposeProject = "octopus"
 // ContainerName is the name the web container is given so logs and `docker ps`
 // stay readable.
 const ContainerName = "octopus-web"
+
+// ContainerPort is the port Next.js listens on inside the container.
+// Baked into apps/web/Dockerfile as ENV PORT; the installer's compose
+// template forwards host:<host-port>:<ContainerPort>.
+const ContainerPort = 3000
+
+// DefaultHostPort is the port offered by the wizard on a fresh install.
+// The user can override in the wizard; the chosen value lives in Config.Port.
+const DefaultHostPort = 3000
 
 // PlatformLabel is a short human string ("linux/amd64") used in log output.
 func PlatformLabel() string {
