@@ -1,0 +1,14 @@
+services:
+  web:
+    build:
+      # Build context is the repo root so the Dockerfile can see the whole workspace.
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    image: octopus-web:latest
+    container_name: octopus-web
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # Bind only to loopback; Caddy on the host terminates TLS and proxies in.
+      - "127.0.0.1:3000:3000"

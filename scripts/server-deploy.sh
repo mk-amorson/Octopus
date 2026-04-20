@@ -22,6 +22,31 @@ install_caddy() {
 	apt-get install -y -qq caddy
 }
 
+install_docker() {
+	if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+		return
+	fi
+	echo "[deploy] installing Docker Engine + compose plugin"
+	export DEBIAN_FRONTEND=noninteractive
+	apt-get update -qq
+	apt-get install -y -qq ca-certificates curl gnupg lsb-release
+	install -m 0755 -d /etc/apt/keyrings
+	if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
+		curl -fsSL https://download.docker.com/linux/debian/gpg \
+			| gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+		chmod a+r /etc/apt/keyrings/docker.gpg
+	fi
+	local codename
+	codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-bookworm}")
+	echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/debian ${codename} stable" \
+		> /etc/apt/sources.list.d/docker.list
+	apt-get update -qq
+	apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
+		docker-buildx-plugin docker-compose-plugin
+	systemctl enable --now docker
+}
+
 sync_caddyfile() {
 	local src="ops/Caddyfile"
 	local dst="/etc/caddy/Caddyfile"
@@ -43,28 +68,39 @@ open_http_ports() {
 	fi
 }
 
-# Patch OpenClaw config (if installed) to accept the public origin via
-# Caddy. Idempotent. No-op when openclaw.json is missing.
-configure_openclaw() {
-	local script="scripts/configure-openclaw.sh"
-	[ -x "$script" ] || return 0
-	for u in root ubuntu debian; do
-		local home
-		home=$(getent passwd "$u" | cut -d: -f6)
-		[ -n "$home" ] && [ -f "$home/.openclaw/openclaw.json" ] || continue
-		echo "[deploy] patching OpenClaw config for user $u"
-		sudo -u "$u" -H OPENCLAW_PUBLIC_ORIGIN="https://claw.amorson.me" \
-			"$PWD/$script" || \
-			echo "[deploy] WARN: configure-openclaw.sh failed for $u" >&2
-		# Restart OpenClaw if it's a systemd unit, so the new origin
-		# applies immediately. Wildcard catches openclaw-gateway[-profile].
-		mapfile -t units < <(systemctl list-unit-files --no-legend 2>/dev/null \
-			| awk '/openclaw/ {print $1}')
-		for unit in "${units[@]}"; do
-			echo "[deploy] restarting $unit"
-			systemctl restart "$unit" || true
-		done
-	done
+# Build and (re)start the web container via docker compose.
+# If ops/.env is missing, we bootstrap it with a random AUTH_SECRET so the
+# site can at least render the homepage. GitHub OAuth stays disabled until
+# the owner fills in AUTH_GITHUB_ID / AUTH_GITHUB_SECRET /
+# AUTH_ALLOWED_GITHUB_LOGINS.
+deploy_web_stack() {
+	local compose_dir="ops"
+	local env_file="$compose_dir/.env"
+	if [ ! -f "$env_file" ]; then
+		echo "[deploy] $env_file missing — bootstrapping with a random AUTH_SECRET."
+		local secret
+		secret=$(openssl rand -base64 48 | tr -d '\n')
+		cat > "$env_file" <<ENV
+AUTH_SECRET=${secret}
+AUTH_URL=https://amorson.me
+NEXTAUTH_URL=https://amorson.me
+# Fill these to enable GitHub sign-in:
+AUTH_GITHUB_ID=
+AUTH_GITHUB_SECRET=
+AUTH_ALLOWED_GITHUB_LOGINS=
+ENV
+		chmod 600 "$env_file"
+	fi
+
+	echo "[deploy] building octopus-web image"
+	docker compose -f "$compose_dir/docker-compose.yml" --env-file "$env_file" build web
+
+	echo "[deploy] (re)starting octopus-web"
+	docker compose -f "$compose_dir/docker-compose.yml" --env-file "$env_file" up -d web
+
+	# Drop dangling build cache so the server doesn't run out of disk after
+	# a few deploys. Safe — only untagged intermediate layers are removed.
+	docker image prune -f >/dev/null 2>&1 || true
 }
 
 dump_diagnostics() {
@@ -72,26 +108,30 @@ dump_diagnostics() {
 	systemctl is-active caddy || true
 	systemctl is-enabled caddy || true
 
-	echo "==== ss -tlnp (80/443/18789) ===="
-	ss -tlnp 2>/dev/null | awk 'NR==1 || /:80 |:443 |:18789 /' || true
+	echo "==== docker compose ps ===="
+	docker compose -f ops/docker-compose.yml ps 2>/dev/null || true
 
-	echo "==== caddy journal (last 60 lines) ===="
-	journalctl -u caddy --no-pager -n 60 -o cat 2>/dev/null || true
+	echo "==== ss -tlnp (80/443/3000) ===="
+	ss -tlnp 2>/dev/null | awk 'NR==1 || /:80 |:443 |:3000 /' || true
+
+	echo "==== caddy journal (last 40 lines) ===="
+	journalctl -u caddy --no-pager -n 40 -o cat 2>/dev/null || true
+
+	echo "==== octopus-web logs (last 40 lines) ===="
+	docker logs --tail 40 octopus-web 2>&1 || true
 
 	echo "==== self-check apex ===="
 	curl -skSI -m 10 --resolve amorson.me:443:127.0.0.1 https://amorson.me/ 2>&1 | head -10 || true
-
-	echo "==== self-check claw ===="
-	curl -skSI -m 10 --resolve claw.amorson.me:443:127.0.0.1 https://claw.amorson.me/ 2>&1 | head -10 || true
 }
 
 install_caddy
+install_docker
 sync_caddyfile
 open_http_ports
-configure_openclaw
+deploy_web_stack
 
 # Give Caddy time to settle and complete at least one cert issuance attempt.
-sleep 25
+sleep 15
 dump_diagnostics
 
 echo "[deploy] done"
