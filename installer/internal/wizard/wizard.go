@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,7 @@ type Answers struct {
 	BasePath string
 	Host     string
 	Port     int
+	Domain   string
 }
 
 // Run asks the installation questions on stdin and returns the collected
@@ -32,17 +34,39 @@ func Run(prev *state.Config) (Answers, error) {
 	defHost := "127.0.0.1"
 	defBase := "/octopus"
 	defPort := 3000
+	defDomain := ""
 	if prev != nil {
 		defHost = prev.Host
 		defBase = prev.BasePath
 		if prev.Port != 0 {
 			defPort = prev.Port
 		}
+		defDomain = prev.Domain
 	}
 
-	host, err := askHost(r, defHost)
-	if err != nil {
-		return Answers{}, err
+	// Only offer the domain shortcut on Linux — the Caddy auto-setup only
+	// works there. Mac/Windows users who want a domain put their own
+	// reverse proxy in front of the bound port.
+	var domain string
+	if runtime.GOOS == "linux" {
+		d, err := askDomain(r, defDomain)
+		if err != nil {
+			return Answers{}, err
+		}
+		domain = d
+	}
+
+	var host string
+	if domain != "" {
+		// When we're fronting with Caddy, bind loopback only so the app
+		// isn't directly reachable from outside.
+		host = "127.0.0.1"
+	} else {
+		h, err := askHost(r, defHost)
+		if err != nil {
+			return Answers{}, err
+		}
+		host = h
 	}
 	base, err := askBasePath(r, defBase)
 	if err != nil {
@@ -52,10 +76,43 @@ func Run(prev *state.Config) (Answers, error) {
 	if err != nil {
 		return Answers{}, err
 	}
-	return Answers{BasePath: base, Host: host, Port: port}, nil
+	return Answers{BasePath: base, Host: host, Port: port, Domain: domain}, nil
+}
+
+// askDomain optionally collects a domain name that Caddy will reverse-
+// proxy onto Octopus. Empty input means "no domain, skip Caddy".
+func askDomain(r *bufio.Reader, def string) (string, error) {
+	fmt.Println("  Do you have a domain pointing at THIS machine?")
+	fmt.Println("    If yes, I'll install Caddy and set up HTTPS automatically")
+	fmt.Println("    (Let's Encrypt cert on first request). Make sure the A/AAAA")
+	fmt.Println("    record resolves here and ports 80/443 are free.")
+	fmt.Println("    Leave blank to skip.")
+	for {
+		promptStr := "  domain (blank = skip)"
+		if def != "" {
+			promptStr += fmt.Sprintf(" [%s]", def)
+		}
+		promptStr += ": "
+		s, err := prompt(r, promptStr)
+		if err != nil {
+			return "", err
+		}
+		if s == "" {
+			return def, nil
+		}
+		// A crude sanity check — reject things that obviously aren't
+		// hostnames. We don't want to try to cover every edge case; Caddy
+		// will give a clearer error if something's wrong.
+		if strings.Contains(s, "://") || strings.Contains(s, " ") || !strings.Contains(s, ".") {
+			fmt.Println("  that doesn't look like a domain (expected e.g. example.com)")
+			continue
+		}
+		return s, nil
+	}
 }
 
 func askHost(r *bufio.Reader, def string) (string, error) {
+	fmt.Println()
 	fmt.Println("  How will you reach Octopus?")
 	fmt.Println("    1) localhost only  (bind 127.0.0.1 — invisible to other machines)")
 	fmt.Println("    2) all interfaces  (bind 0.0.0.0 — reachable from LAN / domain if you set up a reverse proxy yourself)")
@@ -142,6 +199,9 @@ func Confirm(a Answers) (bool, error) {
 	r := bufio.NewReader(os.Stdin)
 	fmt.Println()
 	fmt.Println("  Ready to install with:")
+	if a.Domain != "" {
+		fmt.Printf("    domain:  %s  (Caddy + HTTPS)\n", a.Domain)
+	}
 	fmt.Printf("    host:    %s\n", a.Host)
 	fmt.Printf("    port:    %d\n", a.Port)
 	fmt.Printf("    subpath: %s\n", displayBase(a.BasePath))

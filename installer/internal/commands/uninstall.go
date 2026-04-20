@@ -6,13 +6,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mk-amorson/Octopus/installer/internal/caddy"
 	"github.com/mk-amorson/Octopus/installer/internal/stack"
 	"github.com/mk-amorson/Octopus/installer/internal/state"
 )
 
-// Uninstall tears everything down: container, image, state directory. It
-// prompts first because the action is destructive and irreversible (all
-// persisted Octopus data on this machine goes away).
+// Uninstall tears everything down: container, image, state directory, and
+// the Caddyfile we installed (if any). It prompts first because the
+// action is destructive and irreversible.
 func Uninstall() error {
 	cfg, err := state.Load()
 	if err != nil {
@@ -24,6 +25,9 @@ func Uninstall() error {
 	}
 
 	fmt.Printf("This will remove the Octopus container, its image, and everything under %s.\n", mustDir())
+	if cfg.Domain != "" {
+		fmt.Println("It will also delete /etc/caddy/Caddyfile (Caddy itself stays installed).")
+	}
 	fmt.Print("type 'yes' to confirm: ")
 	r := bufio.NewReader(os.Stdin)
 	line, _ := r.ReadString('\n')
@@ -42,6 +46,12 @@ func Uninstall() error {
 		fmt.Printf("warning: docker compose down failed: %v\n", err)
 	}
 	stack.RemoveImage(cfg.Version)
+
+	if cfg.Domain != "" {
+		if err := caddy.Remove(); err != nil {
+			fmt.Printf("warning: Caddy cleanup failed: %v\n", err)
+		}
+	}
 
 	if err := state.Remove(); err != nil {
 		return fmt.Errorf("remove state dir: %w", err)
