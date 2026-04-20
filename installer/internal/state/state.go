@@ -14,13 +14,19 @@ import (
 // machine per user.
 type Config struct {
 	Version  string `json:"version"`
-	BasePath string `json:"base_path"` // e.g. "/octopus" or "" (root)
-	Host     string `json:"host"`      // "127.0.0.1" or "0.0.0.0"
-	Port     int    `json:"port"`      // host-side port, container is always 3000
+	BasePath string `json:"base_path"`        // e.g. "/octopus" or "" (root)
+	Host     string `json:"host"`             // "127.0.0.1" or "0.0.0.0"
+	Port     int    `json:"port"`             // host-side port, container is always 3000
+	Domain   string `json:"domain,omitempty"` // optional: auto-Caddy target, e.g. "amorson.me"
 }
 
-// URL returns the user-facing URL of the running instance.
+// URL returns the user-facing URL of the running instance. When a domain
+// is configured (and therefore Caddy fronts the app with TLS), this is
+// the public HTTPS URL; otherwise it's the direct http://host:port form.
 func (c Config) URL() string {
+	if c.Domain != "" {
+		return fmt.Sprintf("https://%s%s", c.Domain, c.BasePath)
+	}
 	host := c.Host
 	if host == "0.0.0.0" {
 		host = "localhost"
