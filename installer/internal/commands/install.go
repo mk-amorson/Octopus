@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/mk-amorson/Octopus/installer/internal/docker"
 	"github.com/mk-amorson/Octopus/installer/internal/source"
@@ -81,62 +82,29 @@ func Install() error {
 
 // printPathHintIfNeeded warns the user when `octopus` isn't on PATH in
 // their current shell yet. The bootstrap appends an `export` to shell rc
-// files, but that only takes effect on a new login. Without this hint the
-// user sees "Octopus is up" and then `octopus status` → "command not
-// found", which is a confusing first experience.
+// files, but that only takes effect on a new login. Without this hint
+// "Octopus is up" is immediately followed by `octopus status` → "command
+// not found", which is a confusing first experience.
+//
+// Skipped on Windows: the bootstrap uses SetEnvironmentVariable at User
+// scope, which new terminals inherit. Already-open console windows don't,
+// but there's no single one-liner that works across cmd and PowerShell.
 func printPathHintIfNeeded() {
 	if runtime.GOOS == "windows" {
-		// On Windows, the bootstrap already uses SetEnvironmentVariable at
-		// User scope; new terminals inherit it. Console windows that were
-		// already open don't, but there's no equivalent one-liner to
-		// suggest here that works across cmd/PowerShell, so we stay quiet.
 		return
 	}
 	binDir, err := state.BinDir()
 	if err != nil {
 		return
 	}
-	// If the binary is currently on PATH via the resolution the user's
-	// shell will do, there's nothing to warn about.
-	if onPath := os.Getenv("PATH"); containsDir(onPath, binDir) {
-		return
+	for _, p := range strings.Split(os.Getenv("PATH"), ":") {
+		if p == binDir {
+			return
+		}
 	}
 	fmt.Println()
 	fmt.Println("  Note: new shells will pick up `octopus` on PATH automatically.")
 	fmt.Println("  To use it in THIS shell right now, run:")
 	fmt.Println()
 	fmt.Printf("    export PATH=\"%s:$PATH\"\n", binDir)
-}
-
-func containsDir(path, dir string) bool {
-	if path == "" || dir == "" {
-		return false
-	}
-	sep := ":"
-	if runtime.GOOS == "windows" {
-		sep = ";"
-	}
-	for _, p := range splitList(path, sep) {
-		if p == dir {
-			return true
-		}
-	}
-	return false
-}
-
-func splitList(s, sep string) []string {
-	// tiny helper to avoid a strings import here; two lines is cheaper than
-	// yet another import block.
-	out := []string{}
-	cur := ""
-	for i := 0; i < len(s); i++ {
-		if string(s[i]) == sep {
-			out = append(out, cur)
-			cur = ""
-			continue
-		}
-		cur += string(s[i])
-	}
-	out = append(out, cur)
-	return out
 }
