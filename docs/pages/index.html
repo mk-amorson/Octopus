@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Octopus</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html,body{background:#000;color:#fff;margin:0;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    main{max-width:720px;margin:10vh auto;padding:0 1.25rem;line-height:1.55}
+    h1{font-size:2.25rem;margin:0 0 .25rem 0}
+    p.tag{color:#888;margin-top:0}
+    h2{font-size:1.05rem;margin:2.25rem 0 .5rem;color:#bbb;letter-spacing:.04em;text-transform:uppercase}
+    pre{background:#111;border:1px solid #222;padding:.9rem 1rem;overflow:auto;border-radius:6px}
+    a{color:#fff}
+    footer{color:#555;margin-top:4rem;font-size:.8rem}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Octopus</h1>
+  <p class="tag">self-hosted. one command. docker required.</p>
+
+  <h2>Install on Linux / macOS</h2>
+  <pre>curl -fsSL https://mk-amorson.github.io/Octopus/install | sh</pre>
+
+  <h2>Install on Windows (PowerShell)</h2>
+  <pre>iwr -useb https://mk-amorson.github.io/Octopus/install.ps1 | iex</pre>
+
+  <h2>What it does</h2>
+  <p>
+    Downloads the <code>octopus</code> CLI, adds it to your PATH, and runs
+    <code>octopus install</code>. The installer asks where to bind
+    (<code>localhost</code> or all interfaces), which subpath to serve under
+    (default <code>/octopus</code>), and which host port to use, then builds
+    and starts the app under Docker.
+  </p>
+
+  <h2>Afterwards</h2>
+  <pre>octopus start
+octopus stop
+octopus status
+octopus update
+octopus uninstall</pre>
+
+  <footer>
+    source: <a href="https://github.com/mk-amorson/Octopus">github.com/mk-amorson/Octopus</a>
+  </footer>
+</main>
+</body>
+</html>

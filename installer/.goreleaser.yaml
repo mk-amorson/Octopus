@@ -1,0 +1,73 @@
+# goreleaser config for the Octopus installer CLI.
+# Invoked by .github/workflows/release.yml on tags matching v*.
+version: 2
+
+project_name: octopus
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: octopus
+    main: ./cmd/octopus
+    binary: octopus
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # -s -w strips DWARF + symbol table — halves binary size.
+    # -X bakes the release tag into the binary so `octopus version` reports it
+    # and `octopus update` can compare against GitHub's latest.
+    ldflags:
+      - -s -w
+      - -X github.com/mk-amorson/Octopus/installer/internal/version.Current={{ .Tag }}
+
+archives:
+  # Ship bare executables (no tarball). The bootstrap shim expects to
+  # download <name>_<os>_<arch>[.exe] directly, not unpack an archive.
+  - id: raw
+    formats: [binary]
+    name_template: "octopus_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: mk-amorson
+    name: Octopus
+  # Don't mark as latest automatically — the workflow promotes it after
+  # checksum upload succeeds.
+  draft: false
+  prerelease: auto
+  header: |
+    ## Install
+
+    Linux / macOS:
+    ```
+    curl -fsSL https://mk-amorson.github.io/Octopus/install | sh
+    ```
+
+    Windows (PowerShell):
+    ```
+    iwr -useb https://mk-amorson.github.io/Octopus/install.ps1 | iex
+    ```
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^chore:"
+      - "^docs:"
+      - "^test:"

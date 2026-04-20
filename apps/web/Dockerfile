@@ -17,6 +17,10 @@ FROM node:20-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /repo
 
+# Subpath the app is mounted under. Baked into the build because Next.js
+# basePath is a build-time concern — asset URLs resolve against it.
+ARG OCTOPUS_BASE_PATH=""
+ENV OCTOPUS_BASE_PATH=$OCTOPUS_BASE_PATH
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /repo/node_modules ./node_modules
