@@ -54,5 +54,8 @@ jobs:
           VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
-          echo "::notice::dispatching release.yml against $VERSION"
-          gh workflow run release.yml --ref "$VERSION"
+          echo "::notice::dispatching release.yml for $VERSION"
+          # Pass the tag as input so release.yml checks out refs/tags/<tag>
+          # directly, rather than relying on --ref which the Actions UI can
+          # override. --ref is still main here (where release.yml lives).
+          gh workflow run release.yml --ref main -f "tag=$VERSION"

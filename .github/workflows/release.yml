@@ -1,9 +1,19 @@
 name: Release
 
+# Fires either on a direct `v*` tag push, or on an explicit dispatch with
+# the tag passed in. We never rely on `github.ref` for dispatches because
+# the Actions UI defaults to the default branch — an easy way to end up
+# running goreleaser against `main` with a stale tag pointing elsewhere,
+# which goreleaser correctly refuses.
+
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.1). Leave blank on push events."
+        required: false
 
 permissions:
   contents: write   # needed to create the GitHub Release and upload assets
@@ -13,9 +23,26 @@ jobs:
     name: Build and publish installer
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve ref
+        id: ref
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT:     ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$INPUT_TAG" ]; then
+            ref="refs/tags/$INPUT_TAG"
+          else
+            ref="$GITHUB_REF"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "::notice::building ref=$ref"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ steps.ref.outputs.ref }}
           fetch-depth: 0   # goreleaser reads tags for changelog
 
       - name: Set up Go
