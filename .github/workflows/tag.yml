@@ -1,0 +1,44 @@
+name: Tag release
+
+# Mobile-friendly: run this from Actions → "Tag release" → "Run workflow",
+# type a version, hit go. Creates and pushes the git tag on top of main,
+# which triggers the Release workflow to build and upload binaries.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to create (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Validate and push tag
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::invalid version '$VERSION' (expected vX.Y.Z or vX.Y.Z-suffix)"
+            exit 1
+          fi
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::tag $VERSION already exists"
+            exit 1
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "$VERSION"
+          echo "::notice::pushed tag $VERSION — the Release workflow will pick it up"
