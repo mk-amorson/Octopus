@@ -263,7 +263,7 @@ Invariant: we never overwrite the user's existing `/etc/caddy/Caddyfile`, and we
 4. `caddy validate` against the live config.
 5. `systemctl reload caddy` (no downtime).
 
-Rollback: delete `/etc/caddy/conf.d/octopus.caddy`; if we added the `import` line in step 2 we also remove it. The import is idempotent enough that we tag our addition with a trailing comment (`# octopus-installer`) so rollback can grep for its own line and not touch anything else.
+Rollback and re-run idempotency: when we add the `import` line in step 2, we write it on its own line at end-of-file as `import conf.d/*.caddy  # octopus-installer`. Both subsequent installs and rollback recognise *exactly* that trailing marker — re-runs see the line and skip, rollback greps for the marker and removes only that line. We never match bare `import conf.d/*.caddy` without the marker, so a user's pre-existing import is never removed by our cleanup.
 
 ### 7.2 `nginx.go` / `apache.go` — snippet-only
 
@@ -567,7 +567,7 @@ The following happens as part of the implementation plan (first step, before any
 
 After this step, the repository has **no deploy automation at all.** Installer PRs start from a clean slate.
 
-**Interim state.** Between this wipe and the v0.1 release, there is no live `https://amorson.me` — the domain resolves but returns nothing (the contact line to GitHub Pages is not set up; the server is bare). This is acknowledged and accepted: the site had no users yet, and the v0.1 acceptance criterion (§17) is that the author installs onto `amorson.me` via the installer once v0.1 is ready. No placeholder page is kept up in the interim; doing so would be exactly the kind of temporary scaffolding we want to avoid.
+**Interim state.** Between this wipe and the v0.1 release, there is no live `https://amorson.me` — the domain resolves but returns nothing (no CNAME is pointed at GitHub Pages; the server is bare). This is acknowledged and accepted: the site had no users yet, and the v0.1 acceptance criterion (§17) is that the author installs onto `amorson.me` via the installer once v0.1 is ready. No placeholder page is kept up in the interim; doing so would be exactly the kind of temporary scaffolding we want to avoid.
 
 ## 17. v0.1 exit criteria
 
