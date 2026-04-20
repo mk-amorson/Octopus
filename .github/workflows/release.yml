@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (must exist already, e.g. v0.1.1)"
+        description: "Tag to release (must exist; `v` prefix added if missing)"
         required: true
         default: "v0.1.1"
 
@@ -30,6 +30,7 @@ jobs:
           INPUT_TAG: ${{ inputs.tag }}
           EVENT:     ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -37,7 +38,18 @@ jobs:
               echo "::error::tag input is required"
               exit 1
             fi
-            ref="refs/tags/$INPUT_TAG"
+            # Normalise: accept "0.1.1" and treat it as "v0.1.1" so a small
+            # UI typo isn't a whole new workflow failure.
+            tag="$INPUT_TAG"
+            case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+            # Verify the tag exists on the remote BEFORE actions/checkout
+            # tries to fetch it — otherwise failure is an opaque "pathspec
+            # did not match".
+            if ! git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "::error::tag '$tag' does not exist. Create it first (Actions → Tag release)"
+              exit 1
+            fi
+            ref="refs/tags/$tag"
           else
             ref="$GITHUB_REF"
           fi
