@@ -18,8 +18,12 @@ RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /repo
 
 # Subpath the app is mounted under. Baked into the build because Next.js
-# basePath is a build-time concern — asset URLs resolve against it.
-ARG OCTOPUS_BASE_PATH=""
+# basePath is a build-time concern — asset URLs resolve against it. The
+# GHCR image that consumers pull is built with /octopus (see
+# .github/workflows/build-image.yml). Overriding here only matters for
+# local `docker build` — ship a new image tag if you need a different
+# subpath in production.
+ARG OCTOPUS_BASE_PATH=/octopus
 ENV OCTOPUS_BASE_PATH=$OCTOPUS_BASE_PATH
 ENV NEXT_TELEMETRY_DISABLED=1
 
