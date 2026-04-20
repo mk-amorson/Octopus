@@ -74,7 +74,8 @@ internal/wizard/wizard.go          stdin prompts for host / subpath / port.
 internal/stack/stack.go            Renders docker-compose.octopus.yml, wraps build/up/down.
 internal/commands/install.go       install flow: docker check → wizard → download → build → up → save.
 internal/commands/lifecycle.go     start, stop, status.
-internal/commands/update.go        Compares version.Current to latest tag; rebuilds if newer.
+internal/commands/update.go        Compares version.Current to latest tag; self-upgrades the CLI first when it's behind, then rebuilds the app.
+internal/selfupdate/selfupdate.go  Download + SHA256 + atomic-replace the running binary; re-exec into it.
 internal/commands/uninstall.go     down -v + image rm + RemoveAll state dir.
 ```
 
