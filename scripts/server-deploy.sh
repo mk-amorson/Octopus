@@ -69,34 +69,18 @@ open_http_ports() {
 }
 
 # Build and (re)start the web container via docker compose.
-# If ops/.env is missing, we bootstrap it with a random AUTH_SECRET so the
-# site can at least render the homepage. GitHub OAuth stays disabled until
-# the owner fills in AUTH_GITHUB_ID / AUTH_GITHUB_SECRET /
-# AUTH_ALLOWED_GITHUB_LOGINS.
 deploy_web_stack() {
 	local compose_dir="ops"
 	local env_file="$compose_dir/.env"
-	if [ ! -f "$env_file" ]; then
-		echo "[deploy] $env_file missing — bootstrapping with a random AUTH_SECRET."
-		local secret
-		secret=$(openssl rand -base64 48 | tr -d '\n')
-		cat > "$env_file" <<ENV
-AUTH_SECRET=${secret}
-AUTH_URL=https://amorson.me
-NEXTAUTH_URL=https://amorson.me
-# Fill these to enable GitHub sign-in:
-AUTH_GITHUB_ID=
-AUTH_GITHUB_SECRET=
-AUTH_ALLOWED_GITHUB_LOGINS=
-ENV
-		chmod 600 "$env_file"
-	fi
+	# Create an empty env file if missing — docker compose `env_file:` requires
+	# the path to exist, and we have no runtime secrets yet.
+	[ -f "$env_file" ] || { : > "$env_file"; chmod 600 "$env_file"; }
 
 	echo "[deploy] building octopus-web image"
-	docker compose -f "$compose_dir/docker-compose.yml" --env-file "$env_file" build web
+	docker compose -f "$compose_dir/docker-compose.yml" build web
 
 	echo "[deploy] (re)starting octopus-web"
-	docker compose -f "$compose_dir/docker-compose.yml" --env-file "$env_file" up -d web
+	docker compose -f "$compose_dir/docker-compose.yml" up -d web
 
 	# Drop dangling build cache so the server doesn't run out of disk after
 	# a few deploys. Safe — only untagged intermediate layers are removed.

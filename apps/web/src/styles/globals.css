@@ -17,10 +17,4 @@ body {
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  touch-action: manipulation;
-}
-
-/* Kill tap-highlight flashing on mobile so the editor stays clean. */
-* {
-  -webkit-tap-highlight-color: transparent;
 }
