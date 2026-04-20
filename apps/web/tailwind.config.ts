@@ -7,7 +7,10 @@ const config: Config = {
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Inter", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
-        basis33: ["var(--font-basis33)", "ui-monospace", "monospace"],
+        // Our stylised pixel font — proportional letters with a fixed
+        // 1-pixel gap, monospace digits. Load order in layout.tsx exposes
+        // it as the --font-octopus-pixel CSS var.
+        pixel: ["var(--font-octopus-pixel)", "ui-monospace", "monospace"],
       },
     },
   },

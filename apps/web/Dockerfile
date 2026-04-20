@@ -21,6 +21,13 @@ WORKDIR /repo
 # basePath is a build-time concern — asset URLs resolve against it.
 ARG OCTOPUS_BASE_PATH=""
 ENV OCTOPUS_BASE_PATH=$OCTOPUS_BASE_PATH
+
+# App version string shown under the Octopus logo so users can tell at a
+# glance which release they are running. Embedded at build time via
+# Next.js' NEXT_PUBLIC_* env-inlining.
+ARG OCTOPUS_VERSION=""
+ENV NEXT_PUBLIC_OCTOPUS_VERSION=$OCTOPUS_VERSION
+
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /repo/node_modules ./node_modules
