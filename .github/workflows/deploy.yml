@@ -51,6 +51,15 @@ jobs:
             set -euo pipefail
             DEPLOY_PATH="${{ vars.DEPLOY_PATH || '/opt/octopus' }}"
             mkdir -p "$DEPLOY_PATH"
+            # Strip any leftover OpenClaw shell hooks. The old installer
+            # sourced ~/.openclaw/completions/openclaw.bash from ~/.bashrc;
+            # that file is gone now, so every new SSH session prints an
+            # error to stderr, which drone-scp then treats as a failure.
+            for rc in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+              [ -f "$rc" ] || continue
+              sed -i '/openclaw/Id' "$rc" || true
+            done
+            rm -rf "$HOME/.openclaw" 2>/dev/null || true
 
       - name: Copy repository to server
         uses: appleboy/scp-action@v0.1.7
