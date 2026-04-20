@@ -92,7 +92,10 @@ main() {
   install -m 0755 "${tmp}/${asset}" "$BIN_PATH"
   printf 'octopus-install: installed to %s\n' "$BIN_PATH"
 
-  # Add to PATH via shell rc, only if it isn't already wired up.
+  # Add to PATH via shell rc, only if it isn't already wired up. These rc
+  # files are only re-read when a new shell starts, so the *current* shell
+  # still won't see the new PATH after this script exits — that's why the
+  # final banner below tells the user how to pick it up right away.
   add_to_path() {
     rc="$1"
     [ -f "$rc" ] || return 0
@@ -106,7 +109,21 @@ main() {
   add_to_path "$HOME/.profile"
 
   printf '\noctopus-install: starting installer. Follow the prompts.\n\n'
-  PATH="$INSTALL_DIR:$PATH" exec "$BIN_PATH" install
+
+  # We can't `exec` the installer and also print a PATH hint afterwards
+  # from the same script, so run it as a child and print the hint on exit.
+  set +e
+  PATH="$INSTALL_DIR:$PATH" "$BIN_PATH" install
+  rc=$?
+  set -e
+
+  if [ "$rc" -eq 0 ]; then
+    printf '\n'
+    printf 'octopus-install: note — new shells will pick up `octopus` on PATH automatically.\n'
+    printf 'octopus-install: to use it in THIS shell right now, run:\n'
+    printf '\n    export PATH="$HOME/.octopus/bin:$PATH"\n\n'
+  fi
+  exit "$rc"
 }
 
 main "$@"
