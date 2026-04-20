@@ -19,6 +19,7 @@ Scope: a cross-platform CLI installer that deploys Octopus to the user's own mac
 - Windows Server support. Target Windows 10/11 (user workstations).
 - Non-systemd Linux distros (init.d, OpenRC, s6). Debian/Ubuntu, RHEL/Fedora, Arch — all systemd.
 - Non-Docker local runtimes (bare Node, Podman, nerdctl). Docker only.
+- **Persistent user data (DB volumes, uploaded files, Docker named volumes).** The current app has none. When persistent state is added, §11.3 rollback semantics must be revisited — see the "protected paths" note there. Until then, full teardown is safe and is the only reinstall path.
 
 These become roadmap items, not v0.1 requirements.
 
@@ -36,7 +37,7 @@ Windows:      iwr -useb          https://mk-amorson.github.io/Octopus/install.ps
 The shim does exactly three things:
 
 1. Detect `OS` (`linux`/`darwin`/`windows`) and `ARCH` (`amd64`/`arm64`). Fail with a clear message on unsupported combos.
-2. Query `https://api.github.com/repos/mk-amorson/Octopus/releases/latest` for the newest tag. A `--version X` flag lets users pin.
+2. Resolve the newest release tag. **Primary:** follow the HTML redirect of `https://github.com/mk-amorson/Octopus/releases/latest` and extract the tag from the `Location` header — this path is unauthenticated, is not rate-limited per IP the way the JSON API is, and already has a fallback story on flaky networks. **Secondary (only if the redirect fails):** query the JSON API. A `--version X` flag lets users pin. We deliberately avoid `api.github.com` for the default path because 60 req/hr on a shared NAT is a real failure mode.
 3. Download `octopus-installer_<os>_<arch>[.exe]` from that release, verify the SHA256 checksum against the release's `checksums.txt` (also signed with Sigstore cosign, verified if `cosign` is on PATH; optional), mark executable, `exec` it.
 
 The shim is the *only* part of the system hosted on GitHub Pages. GitHub Pages serves static files over HTTPS for free. No app logic.
@@ -230,10 +231,13 @@ Implementations:
 
 ### 7.1 `caddy.go` — native integration
 
-Invariant: we never overwrite the user's existing `/etc/caddy/Caddyfile`. We only add ourselves as a conf.d module.
+Invariant: we never overwrite the user's existing `/etc/caddy/Caddyfile`, and we never append text to a Caddyfile we don't fully understand. We integrate through a `conf.d` import pattern, and the installer adapts to whether that pattern is already set up.
 
 1. Check `systemctl is-active caddy`.
-2. If `Caddyfile` does not contain `import conf.d/*.caddy` or `import conf.d/*`, append it. (Idempotent — check first.)
+2. **Probe the existing Caddyfile.** Run `caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile` and parse the resulting JSON. Classify the file as one of:
+   - **Empty / global-only** (no site blocks, or only global options) → safe to rewrite. We add a single `import conf.d/*.caddy` line at the end.
+   - **Already has `import conf.d/*.caddy` (or a superset glob that resolves to the same directory)** → nothing to do, we drop in `/etc/caddy/conf.d/octopus.caddy` directly.
+   - **Has site blocks and no matching import** → we refuse to modify the main Caddyfile. Fall back to §7.2 snippet-only mode with a clearly worded "please add `import conf.d/*.caddy` to your Caddyfile" note. Never append blindly — `import` placement has scoping rules that naive text append violates.
 3. Write `/etc/caddy/conf.d/octopus.caddy` with one of two blocks:
 
    **With domain:**
@@ -258,6 +262,8 @@ Invariant: we never overwrite the user's existing `/etc/caddy/Caddyfile`. We onl
 
 4. `caddy validate` against the live config.
 5. `systemctl reload caddy` (no downtime).
+
+Rollback: delete `/etc/caddy/conf.d/octopus.caddy`; if we added the `import` line in step 2 we also remove it. The import is idempotent enough that we tag our addition with a trailing comment (`# octopus-installer`) so rollback can grep for its own line and not touch anything else.
 
 ### 7.2 `nginx.go` / `apache.go` — snippet-only
 
@@ -310,10 +316,12 @@ At release time, a CI step runs:
 git archive --format=tar.gz \
             --prefix=octopus-<version>/ \
             -o installer/internal/stack/embedded/app.tar.gz \
-            HEAD -- apps ops/docker-compose.yml package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json
+            HEAD
 ```
 
 The tarball is embedded into the binary with `//go:embed`. At install time the installer writes it to the target filesystem (or SFTPs it to the remote), and `docker compose build` consumes it.
+
+**Which files end up in the tarball is controlled by `.gitattributes`, not by the `git archive` command line.** Entries marked `export-ignore` are excluded; everything else is in. This keeps the file list in *one* place (versioned alongside the files themselves) instead of drifting between `.dockerignore`, the release workflow, and the Dockerfile. `.gitattributes` ignores `docs/`, `installer/`, `.github/`, the `bootstrap/` pages source, and any test fixtures. Adding a new top-level directory later doesn't require editing the release workflow.
 
 ### 8.2 Why not download-at-install-time
 
@@ -384,7 +392,7 @@ curl -fsSL https://get.docker.com | sh
 systemctl enable --now docker
 ```
 
-Confirm with the user before running. Privileged: requires root; the executor already has it on server mode, for local mode we shell out via `sudo`.
+Confirm with the user before running. Privileged: requires root. See §10.4 for the privilege-escalation contract — you cannot simply `sudo` under an active Bubbletea TUI without handing over the terminal, and the spec treats that as a first-class problem rather than a footnote.
 
 ### 10.3 Install — Windows / macOS
 
@@ -396,6 +404,17 @@ https://docs.docker.com/get-docker/ and re-run `octopus`.
 ```
 
 … and exit 0. Not a failure — just a prerequisite.
+
+### 10.4 Privilege escalation — the TUI contract
+
+Any step that requires root on a Linux *local* install (installing Docker, writing under `/etc/caddy/`, placing systemd units, installing Caddy itself) cannot be smuggled through `sudo` while Bubbletea owns the terminal — stdin is in raw mode, and a sudo password prompt will not render or be readable. Every real TUI that needs root hits this. We handle it with two complementary mechanisms:
+
+1. **Prefer re-exec at startup, not mid-run.** When the installer starts and the mode picker lands on `Local` and detects that privileged work will be required (Docker missing, or adapter=none-with-domain so Caddy must be installed), the wizard stops *before* starting the progress view, tears the TUI down with `tea.Quit`, and re-execs the same binary under `sudo -E -- octopus <original argv>`. The user sees one sudo prompt in a cooked terminal, then the wizard restarts in the privileged process. Safe because the wizard is deterministic given the saved state.
+2. **`tea.ExecProcess` for unplanned escalations.** When a rare privileged step is discovered partway through (e.g., we thought nginx owned port 80 but Caddy is there and we need to edit it), we wrap the escalated sub-process in `tea.ExecProcess`. Bubbletea hands the terminal to the child (cooked mode, full stdin/stdout), and resumes the TUI when the child exits. The user sees sudo's prompt inline with the progress view.
+
+Server mode is easier: SSH auth already gave us root or a sudoer. The executor runs every command through a single `ssh.Session` that either *is* root or uses the saved `sudo` password via `sudo -S` on stdin, both known ahead of time.
+
+If sudo is unavailable entirely (non-sudoer user on Linux local mode), the installer refuses to install Docker for them and exits with: "Re-run as root, or install Docker Engine yourself and re-run." — never silently falls back to a broken state.
 
 ## 11. Persistence, state, and rollback
 
@@ -418,7 +437,7 @@ Everything else is in Docker (images, container state). Docker volumes are not u
   "version": 1,
   "installs": [
     {
-      "id": "amorson.me",
+      "id": "server:amorson.me:octopus",
       "mode": "server",
       "host": "amorson.me",
       "port": 22,
@@ -432,17 +451,19 @@ Everything else is in Docker (images, container state). Docker volumes are not u
 }
 ```
 
-Re-running the installer with an existing entry offers: `Reinstall`, `Uninstall`, `New install`.
+The `id` is the compound key `<mode>:<host>:<path>` (local mode uses `local:-:<path>`). This lets the same user run two installs on the same host with different paths without collision. Re-running the installer with an existing entry offers: `Reinstall`, `Uninstall`, `New install`.
 
 ### 11.3 Rollback
 
 Every step returns a `Rollback func()`. On error, we run all previously-recorded rollbacks in reverse:
 
 - Proxy snippet written → delete snippet, reload proxy.
-- Stack uploaded → `docker compose down` + `rm -rf stack/`.
+- Stack uploaded → `docker compose down` + `rm -rf stack/` (but see "protected paths" below).
 - Docker installed by us → *do not* remove. Installation is expensive; leaving it is friendly. Log says "Docker was installed by Octopus and left in place."
 
 Partial-failure semantics are explicit in the executor's log: "step 4/7 failed, rolled back 3 of 3 previous steps."
+
+**Protected paths (forward-compat).** Rollback destroys only paths the installer created. The executor maintains a `created := []string{}` list; nothing outside that list is ever touched. Today v0.1 has no persistent state, so `stack/` is wholly installer-owned and full removal is safe. The moment we add a volume (DB dump path, user uploads), it must be registered *outside* `stack/` (e.g., `/var/lib/octopus/`) and never appear in `created`. This prevents a v0.2 DB-containing install from losing user data on a botched v0.2-to-v0.3 reinstall. The abstraction exists today specifically so it doesn't need to be retrofitted.
 
 ## 12. Version & self-update
 
@@ -457,8 +478,8 @@ Partial-failure semantics are explicit in the executor's log: "step 4/7 failed, 
 
 ## 13. Security
 
-- SSH passwords pass through a `memguard`-locked buffer; wiped after auth.
-- Known-hosts TOFU: first connection shows fingerprint, user confirms, fingerprint written to `~/.octopus/known_hosts`. Subsequent connects require match. A `--insecure-ignore-host-key` flag exists but warns loudly.
+- **SSH password handling.** Passwords are held in a locked buffer (`memguard` on Linux/macOS, `windows.VirtualLock` on Windows — exposed through a thin abstraction so callers don't branch on OS). On every platform the buffer is wiped immediately after auth completes. We document explicitly that `memguard`'s mlock guarantees degrade on Windows (pages aren't guaranteed out of the pagefile); VirtualLock is the best available primitive, used consistently, and we accept the weaker guarantee on that OS rather than pretending otherwise.
+- **Known-hosts TOFU with fallback.** On first connect we first read `~/.ssh/known_hosts` as a source of truth — if the user already trusts this host via their normal SSH setup, we skip the prompt and use that fingerprint. If not, we show the fingerprint, user confirms, and we write the new entry to `~/.octopus/known_hosts`. Subsequent connects require a match against the union of both files. A host present in `~/.ssh/known_hosts` with a *different* key than ours is a hard fail — we never silently override a rejection the user made elsewhere. A `--insecure-ignore-host-key` flag exists but warns loudly.
 - Bootstrap script downloads the binary over HTTPS and verifies SHA256 against `checksums.txt` from the same release. Keyless cosign verification is attempted if `cosign` is on PATH but is optional (best-effort).
 - No third-party analytics, telemetry, error reporting. Ever. Every byte the installer sends is visible in the logs under `~/.octopus/logs/`.
 - Logs are scrubbed of auth material before being written.
@@ -495,7 +516,24 @@ permissions:
   contents: write
   id-token: write  # cosign keyless
 jobs:
+  test-local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.23' }
+      - name: Integration test — local mode
+        run: make test-integration-local
+  test-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.23' }
+      - name: Integration test — server mode (dockerized rockylinux target)
+        run: make test-integration-server
   release:
+    needs: [test-local, test-server]      # a broken tag literally cannot ship
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -504,16 +542,17 @@ jobs:
       - name: Bake source tarball
         run: |
           mkdir -p installer/internal/stack/embedded
+          # .gitattributes controls which files end up in the archive.
           git archive --format=tar.gz --prefix=octopus-${{ github.ref_name }}/ \
-                      -o installer/internal/stack/embedded/app.tar.gz \
-                      HEAD -- apps ops/docker-compose.yml package.json \
-                              pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json
+                      -o installer/internal/stack/embedded/app.tar.gz HEAD
       - uses: sigstore/cosign-installer@v3
       - uses: goreleaser/goreleaser-action@v6
         with: { args: release --clean }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+The `release` job depends on both integration test jobs — if either fails, nothing reaches GitHub Releases. This makes §14.2's "a broken tag never ships" claim enforced by the pipeline, not by discipline.
 
 `.github/workflows/pages-deploy.yml` publishes `bootstrap/` (containing `install`, `install.ps1`, `index.html`) to GitHub Pages on every push to `main`.
 
@@ -527,6 +566,8 @@ The following happens as part of the implementation plan (first step, before any
 4. Remove the GitHub `production` environment if it holds only deploy secrets.
 
 After this step, the repository has **no deploy automation at all.** Installer PRs start from a clean slate.
+
+**Interim state.** Between this wipe and the v0.1 release, there is no live `https://amorson.me` — the domain resolves but returns nothing (the contact line to GitHub Pages is not set up; the server is bare). This is acknowledged and accepted: the site had no users yet, and the v0.1 acceptance criterion (§17) is that the author installs onto `amorson.me` via the installer once v0.1 is ready. No placeholder page is kept up in the interim; doing so would be exactly the kind of temporary scaffolding we want to avoid.
 
 ## 17. v0.1 exit criteria
 
