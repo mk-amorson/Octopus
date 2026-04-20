@@ -7,6 +7,7 @@ const config: Config = {
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Inter", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        basis33: ["var(--font-basis33)", "ui-monospace", "monospace"],
       },
     },
   },
