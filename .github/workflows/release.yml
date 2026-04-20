@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (must exist already, e.g. v0.1.1)"
+        description: "Tag to release (must exist; `v` prefix added if missing)"
         required: true
         default: "v0.1.1"
 
@@ -24,12 +24,26 @@ jobs:
     name: Build and publish installer
     runs-on: ubuntu-latest
     steps:
+      - name: Fetch tags so we can validate the input
+        # actions/checkout refuses to initialise against an unknown ref,
+        # so do a bare tag-only fetch first and validate here — that way
+        # a typo like "0.1.1" fails with a clear message instead of an
+        # opaque "pathspec did not match" from checkout.
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          git init -q
+          git remote add origin "https://github.com/${{ github.repository }}.git"
+          git fetch --quiet --depth=1 origin "refs/tags/*:refs/tags/*"
+        working-directory: ${{ runner.temp }}/tag-probe
+
       - name: Resolve ref
         id: ref
         env:
           INPUT_TAG: ${{ inputs.tag }}
           EVENT:     ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
+          PROBE: ${{ runner.temp }}/tag-probe
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -37,7 +51,15 @@ jobs:
               echo "::error::tag input is required"
               exit 1
             fi
-            ref="refs/tags/$INPUT_TAG"
+            # Normalise: accept "0.1.1" and treat it as "v0.1.1" so a small
+            # UI typo isn't a whole new workflow failure.
+            tag="$INPUT_TAG"
+            case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+            if ! git -C "$PROBE" rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "::error::tag '$tag' does not exist in the repo. Create it first (Actions → Tag release)"
+              exit 1
+            fi
+            ref="refs/tags/$tag"
           else
             ref="$GITHUB_REF"
           fi
