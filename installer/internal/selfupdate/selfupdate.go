@@ -37,9 +37,25 @@ func Apply(tag string) error {
 
 	client := &http.Client{Timeout: 2 * time.Minute}
 
-	tmpDir, err := os.MkdirTemp("", "octopus-selfupdate-")
+	self, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	// Follow the symlink if `octopus` was resolved via one — we want to
+	// replace the real file, not the link.
+	if resolved, err := filepath.EvalSymlinks(self); err == nil {
+		self = resolved
+	}
+
+	// Stage the new binary in the SAME directory as the running exe. Using
+	// the system temp dir (e.g. /tmp) may land on a different filesystem
+	// than ~/.octopus/bin, and os.Rename across filesystems errors out
+	// with EXDEV — "invalid cross-device link". Same-dir rename is always
+	// atomic and always works.
+	parent := filepath.Dir(self)
+	tmpDir, err := os.MkdirTemp(parent, ".octopus-selfupdate-")
+	if err != nil {
+		return fmt.Errorf("stage directory in %s: %w", parent, err)
 	}
 	defer os.RemoveAll(tmpDir)
 
@@ -59,15 +75,6 @@ func Apply(tag string) error {
 		return err
 	}
 
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	// Follow the symlink if `octopus` was resolved via one — we want to
-	// replace the real file, not the link.
-	if resolved, err := filepath.EvalSymlinks(self); err == nil {
-		self = resolved
-	}
 	return replaceFile(binPath, self)
 }
 
