@@ -12,8 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v0.1.1). Leave blank on push events."
-        required: false
+        description: "Tag to release (must exist already, e.g. v0.1.1)"
+        required: true
+        default: "v0.1.1"
 
 permissions:
   contents: write   # needed to create the GitHub Release and upload assets
@@ -31,7 +32,11 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$INPUT_TAG" ]; then
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ -z "$INPUT_TAG" ]; then
+              echo "::error::tag input is required"
+              exit 1
+            fi
             ref="refs/tags/$INPUT_TAG"
           else
             ref="$GITHUB_REF"
