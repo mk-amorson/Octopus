@@ -64,13 +64,17 @@ export function Logo({ version, size, className, style }: LogoProps) {
     >
       <h1
         className="font-pixel text-white"
-        // -0.125em trims the 2-pixel right-side advance tail baked into
-        // every letter glyph so the container's right edge lines up
-        // with the last visible pixel of "s".
+        // Order matters: `margin` is a shorthand that resets every
+        // side, so it has to go BEFORE the specific `marginRight`
+        // override. Flipping the order is what broke right-edge
+        // alignment in an earlier iteration.
         style={{
           fontSize: "inherit",
-          marginRight: "-0.125em",
           margin: 0,
+          // -0.125em trims the 2-pixel right-side advance tail baked
+          // into every letter glyph so the container's right edge
+          // lines up with the last visible pixel of "s".
+          marginRight: "-0.125em",
         }}
       >
         Octopus
