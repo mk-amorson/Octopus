@@ -27,7 +27,7 @@ services:
     container_name: %s
     restart: unless-stopped
     ports:
-      - "%s:%d:3000"
+      - "%s:%d:%d"
 `
 
 // Render writes docker-compose.yml into the source tree for the given config.
@@ -42,6 +42,7 @@ func Render(srcDir string, c state.Config) error {
 		state.ContainerName,
 		c.Host,
 		c.Port,
+		state.ContainerPort,
 	)
 	p := filepath.Join(srcDir, "docker-compose.octopus.yml")
 	return os.WriteFile(p, []byte(content), 0o644)

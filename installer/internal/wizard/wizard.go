@@ -33,7 +33,7 @@ func Run(prev *state.Config) (Answers, error) {
 
 	defHost := "127.0.0.1"
 	defBase := "/octopus"
-	defPort := 3000
+	defPort := state.DefaultHostPort
 	defDomain := ""
 	if prev != nil {
 		defHost = prev.Host
