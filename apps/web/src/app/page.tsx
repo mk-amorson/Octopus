@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 
 export default async function HomePage() {
-  const session = await auth();
+  const session = env.githubConfigured ? await auth() : null;
   const login = session?.user?.githubLogin;
 
   return (
@@ -14,7 +15,12 @@ export default async function HomePage() {
         Personal hub. No-code agent editor. More to come.
       </p>
 
-      {login ? (
+      {!env.githubConfigured ? (
+        <p className="mt-10 max-w-md text-xs text-white/40">
+          Sign-in disabled — GitHub OAuth credentials aren&apos;t configured on
+          the server yet.
+        </p>
+      ) : login ? (
         <div className="mt-10 flex flex-col items-center gap-3">
           <p className="text-sm text-white/70">
             Signed in as <span className="text-accent">@{login}</span>

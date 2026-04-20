@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthConfig } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { env } from "./env";
 
@@ -13,15 +13,19 @@ declare module "next-auth" {
   }
 }
 
+const providers: NextAuthConfig["providers"] = env.githubConfigured
+  ? [
+      GitHub({
+        clientId: env.AUTH_GITHUB_ID!,
+        clientSecret: env.AUTH_GITHUB_SECRET!,
+      }),
+    ]
+  : [];
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: env.AUTH_SECRET,
   session: { strategy: "jwt" },
-  providers: [
-    GitHub({
-      clientId: env.AUTH_GITHUB_ID,
-      clientSecret: env.AUTH_GITHUB_SECRET,
-    }),
-  ],
+  providers,
   pages: {
     error: "/auth/error",
   },

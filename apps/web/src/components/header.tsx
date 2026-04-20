@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { auth, signIn, signOut } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { NavDrawer } from "./nav-drawer";
 import { LoginButton } from "./login-button";
 
 export async function Header() {
-  const session = await auth();
+  const session = env.githubConfigured ? await auth() : null;
   const loggedIn = Boolean(session?.user);
 
   return (
@@ -20,7 +21,14 @@ export async function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        {loggedIn ? (
+        {!env.githubConfigured ? (
+          <span
+            className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-white/40"
+            title="Set AUTH_GITHUB_ID / AUTH_GITHUB_SECRET / AUTH_ALLOWED_GITHUB_LOGINS in ops/.env"
+          >
+            sign-in not configured
+          </span>
+        ) : loggedIn ? (
           <form
             action={async () => {
               "use server";

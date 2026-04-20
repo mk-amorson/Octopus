@@ -69,16 +69,27 @@ open_http_ports() {
 }
 
 # Build and (re)start the web container via docker compose.
-# Requires ops/.env on the server (not committed). If it's missing we bail
-# early — running with a blank .env would crash the app on the env-schema
-# check and leave users with a broken site.
+# If ops/.env is missing, we bootstrap it with a random AUTH_SECRET so the
+# site can at least render the homepage. GitHub OAuth stays disabled until
+# the owner fills in AUTH_GITHUB_ID / AUTH_GITHUB_SECRET /
+# AUTH_ALLOWED_GITHUB_LOGINS.
 deploy_web_stack() {
 	local compose_dir="ops"
 	local env_file="$compose_dir/.env"
 	if [ ! -f "$env_file" ]; then
-		echo "[deploy] ERROR: $env_file is missing on the server." >&2
-		echo "[deploy] Copy ops/.env.example, fill real values, and redeploy." >&2
-		exit 1
+		echo "[deploy] $env_file missing — bootstrapping with a random AUTH_SECRET."
+		local secret
+		secret=$(openssl rand -base64 48 | tr -d '\n')
+		cat > "$env_file" <<ENV
+AUTH_SECRET=${secret}
+AUTH_URL=https://amorson.me
+NEXTAUTH_URL=https://amorson.me
+# Fill these to enable GitHub sign-in:
+AUTH_GITHUB_ID=
+AUTH_GITHUB_SECRET=
+AUTH_ALLOWED_GITHUB_LOGINS=
+ENV
+		chmod 600 "$env_file"
 	fi
 
 	echo "[deploy] building octopus-web image"
