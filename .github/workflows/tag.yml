@@ -2,7 +2,12 @@ name: Tag release
 
 # Mobile-friendly: run this from Actions → "Tag release" → "Run workflow",
 # type a version, hit go. Creates and pushes the git tag on top of main,
-# which triggers the Release workflow to build and upload binaries.
+# then manually dispatches the Release workflow against that tag.
+#
+# Why dispatch explicitly? GitHub's GITHUB_TOKEN is intentionally prevented
+# from triggering other workflows via `push` events to avoid recursion — so
+# pushing the tag alone wouldn't kick off `release.yml`. workflow_dispatch
+# is the documented exception: it DOES fire when the GITHUB_TOKEN calls it.
 
 on:
   workflow_dispatch:
@@ -14,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # needed to POST /actions/workflows/release.yml/dispatches
 
 jobs:
   tag:
@@ -41,4 +47,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "$VERSION"
           git push origin "$VERSION"
-          echo "::notice::pushed tag $VERSION — the Release workflow will pick it up"
+
+      - name: Trigger Release workflow against the new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          echo "::notice::dispatching release.yml against $VERSION"
+          gh workflow run release.yml --ref "$VERSION"
