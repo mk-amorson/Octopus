@@ -9,7 +9,9 @@
 #   2. resolve the latest release tag
 #   3. download the matching `octopus_<os>_<arch>` binary
 #   4. verify SHA256 against the release's checksums.txt
-#   5. drop it in ~/.octopus/bin, add that to PATH, and exec `octopus install`
+#   5. drop it in ~/.octopus/bin, add that to PATH, and run `octopus install`
+#      with stdin wired to the user's terminal so the interactive wizard
+#      actually gets answers.
 #
 # Everything interactive lives in the Go binary. This shim is intentionally
 # dumb so it's auditable at a glance before piping it to `sh`.
@@ -110,12 +112,27 @@ main() {
 
   printf '\noctopus-install: starting installer. Follow the prompts.\n\n'
 
-  # We can't `exec` the installer and also print a PATH hint afterwards
-  # from the same script, so run it as a child and print the hint on exit.
-  set +e
-  PATH="$INSTALL_DIR:$PATH" "$BIN_PATH" install
-  rc=$?
-  set -e
+  # `curl ... | sh` pipes this script's stdin from curl, so if we just ran
+  # the installer here its `read` calls would hit EOF immediately and every
+  # prompt would silently take the default. Reattach stdin to the user's
+  # real terminal before handing off.
+  if [ -r /dev/tty ]; then
+    set +e
+    PATH="$INSTALL_DIR:$PATH" "$BIN_PATH" install </dev/tty
+    rc=$?
+    set -e
+  else
+    cat >&2 <<EOF
+
+octopus-install: no /dev/tty available — cannot run the interactive wizard here.
+Re-run from a real terminal, e.g.:
+
+    curl -fsSL https://mk-amorson.github.io/Octopus/install -o /tmp/octopus-install
+    sh /tmp/octopus-install
+
+EOF
+    exit 1
+  fi
 
   if [ "$rc" -eq 0 ]; then
     printf '\n'
