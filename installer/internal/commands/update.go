@@ -3,18 +3,27 @@ package commands
 import (
 	"fmt"
 
+	"github.com/mk-amorson/Octopus/installer/internal/selfupdate"
 	"github.com/mk-amorson/Octopus/installer/internal/source"
 	"github.com/mk-amorson/Octopus/installer/internal/stack"
 	"github.com/mk-amorson/Octopus/installer/internal/state"
+	"github.com/mk-amorson/Octopus/installer/internal/version"
 )
 
-// Update checks GitHub for a newer release tag and, if one exists, re-fetches
-// the source tree at that tag and rebuilds the stack in place. Preserves the
-// user's current host/port/subpath choices — they only get re-asked on a
-// full reinstall.
+// Update walks the full upgrade path end-to-end:
 //
-// If no newer tag exists, Update still rebuilds the current version (useful
-// when the installer binary has moved versions but the running stack hasn't).
+//  1. If the `octopus` CLI itself is older than the latest release, it
+//     downloads the new CLI binary, swaps it in for the running one, and
+//     re-executes `octopus update`. The new CLI then takes over — it's
+//     the only code that knows how to rebuild the app with whatever new
+//     compose args / build args a given release introduces.
+//  2. Otherwise the CLI is current; we just re-download the app source
+//     at the latest tag and rebuild the Docker image + restart.
+//
+// The caller sees one command do everything. The only time this isn't
+// true is the initial migration onto a CLI that ships Update — before
+// that, the user re-runs the one-liner once to get the new binary in
+// place.
 func Update() error {
 	cfg, err := requireInstalled()
 	if err != nil {
@@ -25,12 +34,26 @@ func Update() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("installed: %s   latest: %s\n", cfg.Version, latest)
-	if latest == cfg.Version {
-		fmt.Println("already on the latest version. Nothing to do.")
+	fmt.Printf("cli:       %s\napp:       %s\nlatest:    %s\n",
+		version.Current, cfg.Version, latest)
+
+	if latest == version.Current && latest == cfg.Version {
+		fmt.Println("already on the latest version.")
 		return nil
 	}
 
+	if latest != version.Current {
+		fmt.Printf("==> upgrading octopus CLI %s -> %s\n", version.Current, latest)
+		if err := selfupdate.Apply(latest); err != nil {
+			return fmt.Errorf("CLI self-update failed: %w", err)
+		}
+		fmt.Println("==> restarting with new CLI")
+		// Re-exec never returns on Unix; on Windows it spawns a child
+		// and os.Exit()s with its code.
+		return selfupdate.ReExec("update")
+	}
+
+	// CLI is already current but the deployed app is behind.
 	target := latest
 	srcDir, err := state.SourceDir()
 	if err != nil {
@@ -39,7 +62,6 @@ func Update() error {
 	if err := source.Download(target, srcDir); err != nil {
 		return err
 	}
-
 	next := *cfg
 	next.Version = target
 	if err := stack.Render(srcDir, next); err != nil {
@@ -53,7 +75,6 @@ func Update() error {
 	if err := stack.Up(srcDir); err != nil {
 		return err
 	}
-	// Drop the old image tag so the disk doesn't accumulate one per upgrade.
 	if cfg.Version != target {
 		stack.RemoveImage(cfg.Version)
 	}
@@ -61,8 +82,5 @@ func Update() error {
 		return err
 	}
 	fmt.Printf("updated to %s. Serving at %s\n", target, next.URL())
-	fmt.Println()
-	fmt.Println("  note: this updated the app. To update the `octopus` CLI itself, re-run")
-	fmt.Println("  the install one-liner from https://mk-amorson.github.io/Octopus/")
 	return nil
 }
