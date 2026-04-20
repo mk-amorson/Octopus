@@ -4,7 +4,7 @@ const version = process.env.NEXT_PUBLIC_OCTOPUS_VERSION ?? "";
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen items-center justify-center">
+    <main className="flex h-dvh items-center justify-center">
       <div className="flex flex-col items-center">
         <h1 className="font-pixel text-6xl text-white md:text-8xl">Octopus</h1>
         {version && (
