@@ -14,14 +14,16 @@ import (
 const usage = `octopus — self-hosted installer for the Octopus app
 
 usage:
-  octopus install      interactive install (choose host / subpath / port)
-  octopus start        start the local stack if it was stopped
-  octopus stop         stop the local stack (state kept)
-  octopus status       show whether Octopus is running and its URL
-  octopus update       upgrade the app to the latest GitHub release
-  octopus uninstall    remove the container, image, and all local state
-  octopus version      print installer version and exit
-  octopus help         show this message
+  octopus install         interactive install (choose host / subpath / port)
+  octopus start           start the local stack if it was stopped
+  octopus stop            stop the local stack (state kept)
+  octopus status          show whether Octopus is running and its URL
+  octopus update          upgrade the app to the latest GitHub release
+  octopus uninstall       remove the container, image, and all local state
+  octopus token show      print the current admin token
+  octopus token rotate    mint a new admin token and restart the container
+  octopus version         print installer version and exit
+  octopus help            show this message
 
 Everything runs under Docker on this machine. No data leaves it.
 `
@@ -45,6 +47,8 @@ func main() {
 		err = commands.Update()
 	case "uninstall":
 		err = commands.Uninstall()
+	case "token":
+		err = commands.Token(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println(version.Current)
 	case "help", "-h", "--help":

@@ -18,6 +18,10 @@ type Config struct {
 	Host     string `json:"host"`             // "127.0.0.1" or "0.0.0.0"
 	Port     int    `json:"port"`             // host-side port; container listens on ContainerPort
 	Domain   string `json:"domain,omitempty"` // optional: auto-Caddy target, e.g. "example.com"
+	// Token is the admin secret the running app checks against in its
+	// /api/verify-token handler. Generated on first install, rotated
+	// with `octopus token rotate`, shown with `octopus token show`.
+	Token string `json:"token,omitempty"`
 }
 
 // URL returns the user-facing URL of the running instance. When a domain
