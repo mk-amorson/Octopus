@@ -22,9 +22,22 @@ Both one-liners download the `octopus` CLI, add `~/.octopus/bin` (or
 installer asks three questions — bind address, subpath, port — then builds
 and starts the app under Docker.
 
-Prerequisite: Docker must be installed and running (Docker Desktop on
-macOS/Windows, Docker Engine on Linux). The installer checks and fails
-clearly if it isn't.
+### Docker
+
+The installer needs Docker. If it isn't already on the machine, the
+installer offers to install it for you:
+
+- **Linux** — runs the official `get.docker.com` script via `sudo` after
+  your confirmation.
+- **macOS** — uses `brew install --cask docker` when Homebrew is present,
+  otherwise opens the Docker Desktop download page. You launch Docker
+  Desktop once to accept the TOS, then re-run `octopus install`.
+- **Windows** — uses `winget install Docker.DockerDesktop` when winget is
+  present, otherwise opens the Docker Desktop download page. Same re-run
+  flow as macOS.
+
+If you'd rather install Docker yourself, just do so before running the
+one-liner and the installer will skip the prompt.
 
 ## Commands
 
@@ -65,23 +78,27 @@ last choice as the default) on every `octopus install`.
 - `.github/workflows/release.yml` — goreleaser on tag push; builds six
   binaries and `checksums.txt`, attaches them to the GitHub Release.
 - `.github/workflows/pages.yml` — publishes `docs/pages/`.
+- `.github/workflows/tag.yml` — mobile-friendly "Run workflow" button that
+  creates a release tag without needing a local clone.
 
 See `CLAUDE.md` for a deeper architecture walkthrough.
 
 ## Releasing
 
-1. Bump `installer/internal/version/version.go` if you want the `-dev`
-   default to match the upcoming tag (not required — `-X` overrides it).
-2. Tag and push:
+From any browser (no local clone needed):
 
-   ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
+1. Open https://github.com/mk-amorson/Octopus/actions/workflows/tag.yml
+2. Click **Run workflow**, type the version (e.g. `v0.1.0`), submit.
+3. `tag.yml` creates the tag, which triggers `release.yml` — goreleaser
+   builds six binaries + `checksums.txt` and attaches them to a new GitHub
+   Release.
 
-3. The `Release` workflow builds binaries, uploads them with a
-   `checksums.txt`, and creates the GitHub Release automatically. The
-   bootstrap shims find it via the `/releases/latest` redirect.
+From a local clone:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## Status
 
