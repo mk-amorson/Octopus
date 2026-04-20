@@ -11,6 +11,7 @@ import (
 	"github.com/mk-amorson/Octopus/installer/internal/source"
 	"github.com/mk-amorson/Octopus/installer/internal/stack"
 	"github.com/mk-amorson/Octopus/installer/internal/state"
+	"github.com/mk-amorson/Octopus/installer/internal/token"
 	"github.com/mk-amorson/Octopus/installer/internal/version"
 	"github.com/mk-amorson/Octopus/installer/internal/wizard"
 )
@@ -49,6 +50,18 @@ func Install() error {
 		Host:     answers.Host,
 		Port:     answers.Port,
 		Domain:   answers.Domain,
+	}
+	// Preserve the existing token on re-install so users don't have
+	// to redistribute it every time they change the subpath / port.
+	// Mint one only when there isn't one yet.
+	if prev != nil && prev.Token != "" {
+		cfg.Token = prev.Token
+	} else {
+		t, err := token.New()
+		if err != nil {
+			return fmt.Errorf("generate admin token: %w", err)
+		}
+		cfg.Token = t
 	}
 
 	srcDir, err := state.SourceDir()
@@ -92,7 +105,11 @@ func Install() error {
 	fmt.Println("  Octopus is up.")
 	fmt.Printf("  %s\n", cfg.URL())
 	fmt.Println()
+	fmt.Println("  Admin token (also shown by `octopus token show`):")
+	fmt.Printf("    %s\n", cfg.Token)
+	fmt.Println()
 	fmt.Println("  Manage it with: octopus start | stop | update | uninstall")
+	fmt.Println("  Token commands: octopus token show | octopus token rotate")
 	printPathHintIfNeeded()
 	return nil
 }
