@@ -68,7 +68,11 @@ Next.js 14 App Router + React 18 + Tailwind. Today a single landing page.
   one-shot fontTools script. Letters, punctuation, and Cyrillic are
   proportional with exactly **2 visual pixels** (128 font-units on
   basis33's 1024-upm grid) between their bounding boxes; digits stay
-  monospace at 7 pixels (448 units); space is 5 pixels.
+  monospace at 7 pixels (448 units); space is 5 pixels. The font's
+  `hhea.descent` / `OS/2.usWinDescent` are trimmed to -192/192 units
+  so the em-box bottom coincides with the lowest descender pixel —
+  needed by `page.tsx` to line the version badge's baseline up with
+  the bottom of "p".
 - `next.config.mjs` reads two env vars at build time:
   - `OCTOPUS_BASE_PATH` → Next's `basePath`. Installer passes it as a
     docker build arg so the user's chosen subpath is baked into the
