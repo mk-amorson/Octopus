@@ -1,9 +1,7 @@
 export default function HomePage() {
   return (
     <main className="flex min-h-screen items-center justify-center">
-      <h1 className="font-mono text-2xl tracking-widest text-white/80 md:text-3xl">
-        amorson.me
-      </h1>
+      <h1 className="font-basis33 text-6xl text-white md:text-8xl">Octopus</h1>
     </main>
   );
 }
