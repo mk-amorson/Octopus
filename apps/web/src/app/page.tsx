@@ -27,7 +27,7 @@ export default function HomePage() {
         </h1>
         {version && (
           <p
-            className="font-pixel absolute text-sm text-white/50 md:text-base"
+            className="font-pixel absolute text-sm leading-[0.875] text-white/50 md:text-base"
             style={{ bottom: 0, right: "-0.0625em", margin: 0 }}
           >
             {version}
