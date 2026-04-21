@@ -22,10 +22,6 @@ const LOGO_TRIMMED_EM = 2.8125;
 // edge — about two logo-pixels.
 const TOP_GAP_EM = 0.125;
 
-// Inner content is a fraction of the logo's font-size — same as
-// the version badge.
-const INNER_FONT_EM = 0.2;
-
 // Next.js doesn't auto-prefix fetch strings the way it does Link
 // hrefs. Bake basePath in client-side ourselves.
 const BASE_PATH = process.env.NEXT_PUBLIC_OCTOPUS_BASE_PATH ?? "";
@@ -113,14 +109,18 @@ export function TokenGate() {
 
   return (
     <div
-      className="token-gate"
+      // font-pixel is what pins the whole gate to the octopus-pixel
+      // font-family; without it the tree falls back to sans.
+      className="token-gate font-pixel"
       data-status={status}
       onClick={status === "bad" ? retry : undefined}
+      // Two instance-level overrides. Nothing else: fontSize is
+      // *deliberately* not set here so `em` values in the inline
+      // styles (and in the CSS rules below) measure in the logo's
+      // font-size, which is what we inherit from the parent column.
       style={{
-        // The only wrapper-instance overrides — everything else is in CSS.
         width: `${LOGO_TRIMMED_EM}em`,
         marginTop: `${TOP_GAP_EM}em`,
-        fontSize: `${INNER_FONT_EM}em`,
       }}
     >
       {status === "idle" ? (
