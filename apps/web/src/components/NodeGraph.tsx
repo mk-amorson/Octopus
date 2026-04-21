@@ -2,10 +2,10 @@
 
 // 3D force graph of every node in the install. Ported from the
 // reference octohub: a custom requestAnimationFrame loop rotates the
-// Three.js *scene* (not the camera) around the focused node, so
-// whichever node the user has expanded in the sidebar sits at the
-// visual centre of the canvas. `setViewOffset` compensates for the
-// fixed left sidebar so the graph isn't hidden behind it.
+// Three.js *scene* (not the camera) around the focused node, and
+// re-positions every label each frame so it always sits on the
+// camera's right of its node — at a constant world-space offset,
+// never hidden behind the geometry.
 
 import { useEffect, useRef } from "react";
 import ForceGraph3D from "3d-force-graph";
@@ -13,11 +13,8 @@ import * as THREE from "three";
 import { nodeObject, type GraphLink, type GraphNode } from "@/lib/graph/visual";
 
 type GraphInstance = InstanceType<typeof ForceGraph3D>;
-// The library's type surface covers most of what we use but trails
-// its actual runtime — scene(), camera(), cameraPosition() and a few
-// others aren't on the d.ts. We keep the casts narrow and local.
 type Loose = GraphInstance & {
-  graphData: (d: { nodes: unknown[]; links: unknown[] }) => unknown;
+  graphData: (d?: { nodes: unknown[]; links: unknown[] }) => { nodes: unknown[]; links: unknown[] };
   onBackgroundClick: (cb: () => void) => void;
   scene: () => THREE.Scene;
   camera: () => THREE.Camera;
@@ -36,12 +33,7 @@ type Props = {
   links: GraphLink[];
   onSelect?: (id: string) => void;
   onDeselect?: () => void;
-  /** When set, the scene translates + rotates around this node so the
-   *  camera sees it at the centre of the canvas. null = world origin. */
   focusNodeId?: string | null;
-  /** Width in pixels of the fixed left sidebar; the canvas shifts its
-   *  camera view by half that so 3D content stays centred in the
-   *  visible area. */
   sidebarWidth?: number;
 };
 
@@ -66,26 +58,22 @@ export function NodeGraph({
   selectRef.current = onSelect;
   deselectRef.current = onDeselect;
 
-  // One-shot scene creation.
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
 
-    // `getComputedStyle(body).fontFamily` returns the CSS value with
-    // the `--font-octopus-pixel` variable already resolved to the
-    // real family name next/font/local generated at build time —
-    // which is exactly what canvas 2D needs. Single source for type
-    // on every text surface in the app.
+    // CSS variable already resolved to the next/font-generated family
+    // name — canvas 2D accepts that string directly. Single source for
+    // type on every text surface in the app.
     const fontFamily = getComputedStyle(document.body).fontFamily;
 
     const graph = new ForceGraph3D(el)
       .backgroundColor("#000000")
       .showNavInfo(false)
       .nodeThreeObject((raw) => nodeObject(raw as unknown as GraphNode, { fontFamily }))
-      // No `.nodeLabel(...)`: the built-in DOM tooltip it injects on
-      // hover uses the browser default font and would show a second
-      // copy of text that's already on the 3D sprite. One label per
-      // node — the SpriteText inside nodeObject() is it.
+      // No .nodeLabel() — the SpriteText inside nodeObject() is the
+      // one and only label; the DOM hover tooltip would be a second
+      // copy in system fonts.
       .linkColor(() => "rgba(255,255,255,0.22)")
       .linkWidth(1)
       .linkDirectionalParticles(2)
@@ -96,25 +84,12 @@ export function NodeGraph({
     const g = graph as unknown as Loose;
     graphRef.current = g;
 
-    // If the pixel TTF finishes loading after the scene mounts, the
-    // canvas already cached a fallback-typeface sprite for every
-    // label. Force a re-render by re-feeding the graph data once the
-    // document reports its fonts ready — SpriteText rebuilds on next
-    // tick with the real TTF.
-    void document.fonts?.ready.then(() => {
-      if (graphRef.current) graphRef.current.graphData({ nodes, links });
-    });
-
     g.onBackgroundClick(() => deselectRef.current?.());
     g.onNodeClick((raw: unknown) => {
       const n = raw as GraphNode;
       selectRef.current?.(n.id);
     });
 
-    // Pause the custom rotation on left-button drag; resume 6 s after
-    // the user lets go. No 3d-force-graph autoRotate is used — we
-    // mutate the scene directly in the rAF loop so the rotation axis
-    // can track the focused node.
     let resume: ReturnType<typeof setTimeout> | null = null;
     const pause = (e: MouseEvent) => {
       if (e.button !== 0) return;
@@ -131,15 +106,9 @@ export function NodeGraph({
     el.addEventListener("touchend", schedule);
 
     const applyViewOffset = () => {
-      // Only PerspectiveCamera carries setViewOffset; 3d-force-graph
-      // uses one but the upstream types return the abstract Camera.
       const camera = g.camera() as THREE.PerspectiveCamera;
       const w = el.clientWidth, h = el.clientHeight;
       if (!camera?.setViewOffset || w === 0 || h === 0) return;
-      // Shift the visible viewport by half the sidebar width so the
-      // scene's origin lands in the centre of the uncovered canvas.
-      // A negative x-offset pushes content right, away from the
-      // sidebar that sits on the left.
       if (sidebarWidth > 0) camera.setViewOffset(w, h, -sidebarWidth / 2, 0, w, h);
     };
     applyViewOffset();
@@ -151,26 +120,67 @@ export function NodeGraph({
     ro.observe(el);
 
     const tick = () => {
-      const scene = g.scene();
-      if (scene) {
-        if (rotatingRef.current) angleRef.current += 0.002;
-        let tx = 0, ty = 0, tz = 0;
-        const focusId = focusRef.current;
-        if (focusId) {
-          const data = g.graphData() as unknown as {
-            nodes: Array<{ id: string; x?: number; y?: number; z?: number }>;
-          };
-          const f = data.nodes.find((n) => n.id === focusId);
-          if (f) { tx = f.x ?? 0; ty = f.y ?? 0; tz = f.z ?? 0; }
-        }
-        const c = Math.cos(angleRef.current);
-        const s = Math.sin(angleRef.current);
-        scene.rotation.y = angleRef.current;
-        scene.position.set(-tx * c - tz * s, -ty, tx * s - tz * c);
-      }
+      applySceneRotation(g);
+      applyLabelAnchor(g);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
+
+    function applySceneRotation(g: Loose) {
+      const scene = g.scene();
+      if (!scene) return;
+      if (rotatingRef.current) angleRef.current += 0.002;
+      let tx = 0, ty = 0, tz = 0;
+      const focusId = focusRef.current;
+      if (focusId) {
+        const focused = g.graphData().nodes.find(
+          (n) => (n as { id?: string }).id === focusId,
+        ) as { x?: number; y?: number; z?: number } | undefined;
+        if (focused) {
+          tx = focused.x ?? 0; ty = focused.y ?? 0; tz = focused.z ?? 0;
+        }
+      }
+      const c = Math.cos(angleRef.current);
+      const s = Math.sin(angleRef.current);
+      scene.rotation.y = angleRef.current;
+      scene.position.set(-tx * c - tz * s, -ty, tx * s - tz * c);
+    }
+
+    // Port of the reference's animateLabels: every label carries a
+    // userData.labelOffset (set by nodeObject) and every frame we
+    // place it at `localRight * offset` in the node's local coords
+    // — which, once the scene's own rotation is factored out, puts
+    // the sprite on the camera's right in world space. Result: a
+    // readable badge at a constant offset no matter which side of
+    // the node the camera is on.
+    function applyLabelAnchor(g: Loose) {
+      const camera = g.camera();
+      const scene = g.scene();
+      if (!camera || !scene) return;
+
+      const camRight = new THREE.Vector3();
+      camera.getWorldDirection(camRight);
+      camRight.cross(camera.up).normalize();
+
+      const sceneInverse = new THREE.Matrix4()
+        .makeRotationFromEuler(scene.rotation)
+        .invert();
+      const localRight = camRight.clone().applyMatrix4(sceneInverse);
+
+      for (const raw of g.graphData().nodes) {
+        const obj = (raw as { __threeObj?: THREE.Group }).__threeObj;
+        if (!obj) continue;
+        for (const child of obj.children) {
+          const offset = (child.userData as { labelOffset?: number }).labelOffset;
+          if (offset === undefined) continue;
+          child.position.set(
+            localRight.x * offset,
+            localRight.y * offset,
+            localRight.z * offset,
+          );
+        }
+      }
+    }
 
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -183,14 +193,21 @@ export function NodeGraph({
     };
   }, [sidebarWidth]);
 
-  // Feed graph data without tearing the scene down.
+  // Feed graph data, awaiting document.fonts.ready every time so the
+  // label sprites rebuild with the real pixel TTF if the initial
+  // mount happened before the font had finished loading. After the
+  // first resolution the Promise is already fulfilled, so subsequent
+  // changes are effectively synchronous.
   useEffect(() => {
-    graphRef.current?.graphData({ nodes, links });
+    const g = graphRef.current;
+    if (!g) return;
+    let cancelled = false;
+    const feed = () => { if (!cancelled) g.graphData({ nodes, links }); };
+    if (document.fonts?.ready) document.fonts.ready.then(feed);
+    else feed();
+    return () => { cancelled = true; };
   }, [nodes, links]);
 
-  // Instant camera-reset when focus changes. Matches the reference's
-  // behaviour — the rAF loop above then keeps the scene revolving
-  // around the new centre.
   useEffect(() => {
     focusRef.current = focusNodeId;
     angleRef.current = 0;

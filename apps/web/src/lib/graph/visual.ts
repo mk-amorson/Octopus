@@ -1,7 +1,7 @@
 // Pure factories for the three.js objects the 3D node graph renders.
 // Kept separate from the component so the graph view stays focused on
-// lifecycle, and both sides (shape, colour, typography) have a
-// single source of truth — this module.
+// lifecycle, and every visual decision — shape, colour, typography,
+// label placement — has a single source of truth in this module.
 
 import * as THREE from "three";
 import SpriteText from "three-spritetext";
@@ -22,18 +22,32 @@ export type GraphLink = { source: string; target: string };
 
 export type NodeObjectOptions = {
   /** CSS font-family string that the Three.js sprite text will use.
-   *  Comma-separated stacks are fine — canvas 2D accepts the same
-   *  format as CSS. Defaulted for tests / tools that don't care; the
-   *  live graph always passes the resolved body font so labels stay
-   *  in our pixel TTF. */
+   *  Canvas 2D accepts the same comma-separated format as CSS.
+   *  Defaulted for tests / tools that don't care; the live graph
+   *  always passes the resolved body font so labels stay in our
+   *  pixel TTF. */
   fontFamily?: string;
 };
 
+// Geometry radius per node role. One source of truth so the label
+// offset below reads the same number — the label sits at
+// `radius + LABEL_GAP` world units from the node centre, every time.
+const HUB_RADIUS = 6;
+const INSTANCE_RADIUS = 4;
+const ACTION_SIDE = 6; // cube side length
+const LABEL_GAP = 3;
+
 function geometryFor(n: GraphNode): THREE.BufferGeometry {
-  if (n.role === "hub") return new THREE.IcosahedronGeometry(6, 0);
-  if (n.kind === "trigger") return new THREE.OctahedronGeometry(4, 0);
-  if (n.kind === "action") return new THREE.BoxGeometry(6, 6, 6);
-  return new THREE.SphereGeometry(4, 12, 12);
+  if (n.role === "hub") return new THREE.IcosahedronGeometry(HUB_RADIUS, 0);
+  if (n.kind === "trigger") return new THREE.OctahedronGeometry(INSTANCE_RADIUS, 0);
+  if (n.kind === "action") return new THREE.BoxGeometry(ACTION_SIDE, ACTION_SIDE, ACTION_SIDE);
+  return new THREE.SphereGeometry(INSTANCE_RADIUS, 12, 12);
+}
+
+function radiusFor(n: GraphNode): number {
+  if (n.role === "hub") return HUB_RADIUS;
+  if (n.kind === "action") return ACTION_SIDE / 2;
+  return INSTANCE_RADIUS;
 }
 
 function colorForNode(n: GraphNode): string {
@@ -66,15 +80,26 @@ export function nodeObject(n: GraphNode, opts: NodeObjectOptions = {}): THREE.Ob
   const label = new SpriteText(n.label);
   label.color = "#ffffff";
   label.textHeight = n.role === "hub" ? 3 : 2.2;
-  label.position.set(0, n.role === "hub" ? -10 : -7, 0);
-  // SpriteText draws via canvas 2D, which doesn't understand CSS
-  // variables. The component that builds this object reads the
-  // resolved body font-family at mount time and passes it here, so
-  // the sprite renders in the same pixel TTF as every other
-  // character on the page.
+  // Anchor the sprite's origin at its LEFT-centre so the text grows
+  // rightward from the placement point set by the rAF loop — never
+  // overlaps the node, always starts cleanly at `labelOffset` units
+  // away from the centre.
+  label.center.set(0, 0.5);
+  // A dim chip behind the text keeps it readable over any geometry
+  // the scene flies it in front of. depthTest/Write off + a high
+  // renderOrder guarantee the label is never clipped by the node
+  // mesh, even when the node is between camera and label.
+  label.backgroundColor = "rgba(0,0,0,0.55)";
+  label.padding = 1.2;
+  label.borderRadius = 2;
+  label.material.depthWrite = false;
+  label.material.depthTest = false;
+  label.renderOrder = 999;
   if (opts.fontFamily) label.fontFace = opts.fontFamily;
-  label.strokeColor = "#000000";
-  label.strokeWidth = 1;
+  // rAF loop in NodeGraph reads this to place the label on the
+  // camera's right each frame. World-space offset; scales with
+  // zoom like everything else in the scene.
+  label.userData.labelOffset = radiusFor(n) + LABEL_GAP;
   group.add(label);
 
   if (n.role === "instance") {
