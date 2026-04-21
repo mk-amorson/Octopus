@@ -28,6 +28,12 @@ const TOP_GAP_EM = 0.0625;
 // viewport-driven logo size.
 const INNER_FONT_EM = 0.2;
 
+// Baked in at build time (see apps/web/Dockerfile). When Next.js is
+// served under a basePath (e.g. "/octopus"), the app's API routes live
+// at `${basePath}/api/*` too — but fetch() doesn't know about basePath,
+// so we have to prepend it manually here.
+const BASE_PATH = process.env.NEXT_PUBLIC_OCTOPUS_BASE_PATH ?? "";
+
 type Status = "idle" | "checking" | "ok" | "bad";
 
 export function TokenGate() {
@@ -41,7 +47,7 @@ export function TokenGate() {
     if (!trimmed || status === "checking") return;
     setStatus("checking");
     try {
-      const res = await fetch("/api/verify-token", {
+      const res = await fetch(`${BASE_PATH}/api/verify-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: trimmed }),
