@@ -1,7 +1,7 @@
 // Pure factories for the three.js objects the 3D node graph renders.
-// Separate module so the component stays focused on lifecycle and
-// both sides (shape, colour) have a single source of truth — the
-// graph view imports from here, nothing else does.
+// Kept separate from the component so the graph view stays focused on
+// lifecycle, and both sides (shape, colour, typography) have a
+// single source of truth — this module.
 
 import * as THREE from "three";
 import SpriteText from "three-spritetext";
@@ -19,6 +19,15 @@ export type GraphNode = {
 };
 
 export type GraphLink = { source: string; target: string };
+
+export type NodeObjectOptions = {
+  /** CSS font-family string that the Three.js sprite text will use.
+   *  Comma-separated stacks are fine — canvas 2D accepts the same
+   *  format as CSS. Defaulted for tests / tools that don't care; the
+   *  live graph always passes the resolved body font so labels stay
+   *  in our pixel TTF. */
+  fontFamily?: string;
+};
 
 function geometryFor(n: GraphNode): THREE.BufferGeometry {
   if (n.role === "hub") return new THREE.IcosahedronGeometry(6, 0);
@@ -38,7 +47,7 @@ function statusColor(n: GraphNode): string {
   return STATUS.disabled.color;
 }
 
-export function nodeObject(n: GraphNode): THREE.Object3D {
+export function nodeObject(n: GraphNode, opts: NodeObjectOptions = {}): THREE.Object3D {
   const group = new THREE.Group();
   const color = colorForNode(n);
 
@@ -58,7 +67,12 @@ export function nodeObject(n: GraphNode): THREE.Object3D {
   label.color = "#ffffff";
   label.textHeight = n.role === "hub" ? 3 : 2.2;
   label.position.set(0, n.role === "hub" ? -10 : -7, 0);
-  label.fontFace = "monospace";
+  // SpriteText draws via canvas 2D, which doesn't understand CSS
+  // variables. The component that builds this object reads the
+  // resolved body font-family at mount time and passes it here, so
+  // the sprite renders in the same pixel TTF as every other
+  // character on the page.
+  if (opts.fontFamily) label.fontFace = opts.fontFamily;
   label.strokeColor = "#000000";
   label.strokeWidth = 1;
   group.add(label);

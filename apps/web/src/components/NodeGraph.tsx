@@ -71,14 +71,21 @@ export function NodeGraph({
     if (!containerRef.current) return;
     const el = containerRef.current;
 
+    // `getComputedStyle(body).fontFamily` returns the CSS value with
+    // the `--font-octopus-pixel` variable already resolved to the
+    // real family name next/font/local generated at build time —
+    // which is exactly what canvas 2D needs. Single source for type
+    // on every text surface in the app.
+    const fontFamily = getComputedStyle(document.body).fontFamily;
+
     const graph = new ForceGraph3D(el)
       .backgroundColor("#000000")
       .showNavInfo(false)
-      .nodeThreeObject((raw) => nodeObject(raw as unknown as GraphNode))
-      .nodeLabel((raw) => {
-        const n = raw as unknown as GraphNode;
-        return n.sublabel ? `${n.label} — ${n.sublabel}` : n.label;
-      })
+      .nodeThreeObject((raw) => nodeObject(raw as unknown as GraphNode, { fontFamily }))
+      // No `.nodeLabel(...)`: the built-in DOM tooltip it injects on
+      // hover uses the browser default font and would show a second
+      // copy of text that's already on the 3D sprite. One label per
+      // node — the SpriteText inside nodeObject() is it.
       .linkColor(() => "rgba(255,255,255,0.22)")
       .linkWidth(1)
       .linkDirectionalParticles(2)
@@ -88,6 +95,15 @@ export function NodeGraph({
 
     const g = graph as unknown as Loose;
     graphRef.current = g;
+
+    // If the pixel TTF finishes loading after the scene mounts, the
+    // canvas already cached a fallback-typeface sprite for every
+    // label. Force a re-render by re-feeding the graph data once the
+    // document reports its fonts ready — SpriteText rebuilds on next
+    // tick with the real TTF.
+    void document.fonts?.ready.then(() => {
+      if (graphRef.current) graphRef.current.graphData({ nodes, links });
+    });
 
     g.onBackgroundClick(() => deselectRef.current?.());
     g.onNodeClick((raw: unknown) => {
