@@ -33,21 +33,24 @@ body {
 
 /* TokenGate
  *
- * One wrapper, one set of measurements. The <input> (idle) and
- * <span> (checking / ok / bad) inside both inherit font, colour,
- * line-height and sit in the same flex slot, so the placeholder,
- * the typed value, and the result text all render in identical
- * positions automatically.
+ * Single source of truth for the whole gate. The wrapper inherits
+ * the logo's font-size from the parent column (i.e. `em` on this
+ * element measures in logo-pixels), owns border/padding/colour,
+ * and hosts exactly one child — <input> when idle, <span> while
+ * checking / ok / bad. The two children are geometrically
+ * interchangeable: both are flex: 1 with zero padding, so every
+ * glyph they render lands in the same x-y slot automatically.
  */
 .token-gate {
   display: flex;
   align-items: center;
-  height: 1.5em;
-  padding: 0 0.5em;
+  /* Padding and border are in em of the wrapper's inherited font-
+     size (= logo's font-size), so the whole gate scales with
+     `100vmin / LOGO_EM_WIDTH` without any breakpoint math. */
+  padding: 0.05em 0.1em;
   border: 1px solid #ffffff44;
   box-sizing: border-box;
   color: #ffffff;
-  line-height: 1;
   transition: border-color 200ms ease, color 200ms ease;
 }
 .token-gate[data-status="ok"] {
@@ -60,38 +63,36 @@ body {
   cursor: pointer;
 }
 
-/* Input: stripped of every default that would conflict with the
-   wrapper. It's just a slot that takes a string. */
-.token-gate input {
+/* Only the children carry a fontSize — 0.2em of the logo, same
+   scale the version badge uses. Everything else on them is
+   stripped so the wrapper's rules win. */
+.token-gate > input,
+.token-gate > .token-gate-message {
   flex: 1;
   min-width: 0;
-  padding: 0;
   margin: 0;
+  padding: 0;
   background: transparent;
   border: none;
   outline: none;
   color: inherit;
-  caret-color: currentColor;
   font: inherit;
-  line-height: inherit;
+  font-size: 0.2em;
+  line-height: 1.5;
 }
-.token-gate input::placeholder {
+.token-gate > input {
+  caret-color: currentColor;
+}
+.token-gate > input::placeholder {
   color: #ffffff66;
   opacity: 1;
 }
-.token-gate input:focus::placeholder {
-  /* Hide the prompt as soon as the user has the caret, so it
-     doesn't sit on top of it. */
+.token-gate > input:focus::placeholder {
+  /* Hide the prompt as soon as the caret is on — otherwise it sits
+     on top of it. */
   color: transparent;
 }
-
-/* The non-idle message slot. Same flex behaviour as the input
-   so its left edge lines up with the input's text. The fade-in
-   keyframes run once per status change (the React component
-   uses key={status} to remount). */
-.token-gate-message {
-  flex: 1;
-  min-width: 0;
+.token-gate > .token-gate-message {
   animation: token-gate-message-in 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 @keyframes token-gate-message-in {
