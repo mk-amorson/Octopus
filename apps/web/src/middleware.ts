@@ -12,6 +12,7 @@ import { COOKIE_NAME } from "@/lib/auth/config";
 import { verify } from "@/lib/auth/session";
 
 const LOGIN_PATH = "/login";
+const HOME_PATH = "/";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -25,25 +26,40 @@ export async function middleware(req: NextRequest) {
   const authed = await verify(cookie);
 
   if (pathname === LOGIN_PATH) {
-    // Already logged in? Skip the gate — send the user to the dashboard
-    // (or wherever they were originally going).
     if (authed) {
-      const redirect = req.nextUrl.searchParams.get("redirect") || "/";
-      return NextResponse.redirect(new URL(redirect, req.url));
+      // Already logged in — send the user to their original target (or
+      // the dashboard as a default).
+      const target = req.nextUrl.searchParams.get("redirect") || HOME_PATH;
+      return NextResponse.redirect(redirectTo(req, target));
     }
     return NextResponse.next();
   }
 
   if (!authed) {
-    const url = new URL(LOGIN_PATH, req.url);
-    // Preserve the originally-requested path so login can bounce back
-    // to it. Only keep safe same-origin paths.
-    if (pathname !== "/" && !pathname.startsWith("/api/")) {
+    const url = redirectTo(req, LOGIN_PATH);
+    // Preserve the originally-requested path so /login can bounce back
+    // to it after a successful token entry. Skip the root and anything
+    // under /api so the query string stays free of noise / secrets.
+    if (pathname !== HOME_PATH && !pathname.startsWith("/api/")) {
       url.searchParams.set("redirect", pathname);
     }
     return NextResponse.redirect(url);
   }
   return NextResponse.next();
+}
+
+// redirectTo builds a redirect target that preserves the installer's
+// basePath. `req.nextUrl.clone()` returns a NextURL — a URL-ish object
+// that carries basePath separately from pathname, and re-prepends it
+// on serialization. Plain `new URL(path, req.url)` would resolve
+// against the full request URL and strip basePath, which is how
+// v0.1.25 shipped — pushing users at /login instead of /octopus/login
+// and dead-ending them at a Caddy 404.
+function redirectTo(req: NextRequest, path: string): URL {
+  const url = req.nextUrl.clone();
+  url.pathname = path;
+  url.search = "";
+  return url;
 }
 
 export const config = {
