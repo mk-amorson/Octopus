@@ -74,6 +74,14 @@ export type NodeDefinition<TConfig = Record<string, unknown>> = {
   /** Form fields rendered for the user in the config panel. */
   fields: FieldSpec[];
   /**
+   * If set, this node owns a public webhook. The slug is dropped into
+   * the URL as `/api/hooks/<slug>/<nodeId>` and the runtime builds
+   * the full URL via lib/nodes/webhook.ts. Every node that wants to
+   * advertise a callback URL to the world sets this — no more
+   * hardcoding per-type paths in the UI.
+   */
+  webhookPathSlug?: string;
+  /**
    * Build a config form's default values from nothing — used when a
    * new node instance is created. Returning an empty object is fine;
    * defined explicitly so TypeScript knows the config shape.

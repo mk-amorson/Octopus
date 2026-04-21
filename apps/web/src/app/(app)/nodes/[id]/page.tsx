@@ -1,49 +1,37 @@
-// /nodes/[id] — the single-node editor. Two panes: the config form
-// (top / left) and the live trace stream (below / right). Both load
-// from their respective APIs; the form PATCHes the node on save and
-// the trace panel tails the SSE stream.
+// /nodes/[id] — single-node editor. Config form + live trace stream.
+// Serialises the instance through lib/nodes/serialize so the client
+// never receives plaintext secrets and never has to reconstruct the
+// webhook URL itself.
 
 import { notFound } from "next/navigation";
 import { NodeEditor } from "@/components/NodeEditor";
 import { get } from "@/lib/nodes/store";
 import { getRegistry } from "@/lib/nodes/registry";
-import { manager } from "@/lib/nodes/manager";
+import { toPublicView } from "@/lib/nodes/serialize";
 
 export const dynamic = "force-dynamic";
 
 export default function NodeDetailPage({ params }: { params: { id: string } }) {
-  const node = get(params.id);
-  if (!node) notFound();
-  const def = getRegistry().find((d) => d.id === node.type);
+  const raw = get(params.id);
+  if (!raw) notFound();
+  const def = getRegistry().find((d) => d.id === raw.type);
   if (!def) notFound();
 
-  // Strip secrets before handing to the client. The form treats
-  // masked inputs as "send empty means keep current value"; we
-  // expose only whether the value is set.
-  const secretKeys = new Set(
-    def.fields.filter((f) => f.type === "text" && f.secret).map((f) => f.key),
-  );
-  const safeConfig: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(node.config)) {
-    safeConfig[k] = secretKeys.has(k) ? { __set: typeof v === "string" && v.length > 0 } : v;
-  }
+  const node = toPublicView(raw);
 
+  // key={node.id} forces React to remount the whole editor subtree
+  // when the user navigates between two instances of the same route
+  // shape — which is the only way client form state resets. Without
+  // it, typing a token in one node's form and switching to another
+  // would carry the stale token over (v0.1.29 bug).
   return (
     <NodeEditor
-      node={{
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        enabled: node.enabled,
-        config: safeConfig,
-        running: manager.isRunning(node.id),
-      }}
+      key={node.id}
+      node={node}
       def={{
         id: def.id,
         name: def.name,
         description: def.description,
-        category: def.category,
-        kind: def.kind,
         fields: def.fields,
       }}
     />

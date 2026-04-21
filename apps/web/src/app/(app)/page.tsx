@@ -8,7 +8,7 @@ import { NodeGraphLoader } from "@/components/NodeGraphLoader";
 import { list } from "@/lib/nodes/store";
 import { manager } from "@/lib/nodes/manager";
 import { getRegistry } from "@/lib/nodes/registry";
-import type { GraphLink, GraphNode } from "@/components/NodeGraph";
+import type { GraphLink, GraphNode } from "@/lib/graph/visual";
 
 export const dynamic = "force-dynamic";
 

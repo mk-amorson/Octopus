@@ -12,6 +12,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "./LogoutButton";
 import type { SidebarCategory } from "@/lib/nodes/sidebar";
+import { STATUS, statusFor } from "@/lib/nodes/theme";
 
 export function AppShell({
   categories,
@@ -156,13 +157,14 @@ function CategorySection({
 }
 
 function StatusDot({ running, enabled }: { running: boolean; enabled: boolean }) {
-  const color = running
-    ? "bg-emerald-400"
-    : enabled
-      ? "bg-amber-400"
-      : "bg-white/20";
-  const title = running ? "running" : enabled ? "enabled (not running)" : "disabled";
-  return <span className={`w-1.5 h-1.5 rounded-full ${color}`} title={title} />;
+  const s = STATUS[statusFor(enabled, running)];
+  return (
+    <span
+      className="w-1.5 h-1.5 rounded-full"
+      style={{ backgroundColor: s.color }}
+      title={s.label}
+    />
+  );
 }
 
 function BurgerIcon() {

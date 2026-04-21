@@ -13,6 +13,7 @@
 import { getRegistry } from "./registry";
 import { list, get } from "./store";
 import { append as appendTrace } from "./traces";
+import { webhookUrl } from "./webhook";
 import type { NodeInstance, StopFn, TriggerContext } from "./types";
 
 type Active = {
@@ -29,20 +30,13 @@ function cache(): GlobalCache {
   return g[GLOBAL_KEY]!;
 }
 
-function publicWebhookUrl(nodeId: string, nodeType: string): string {
-  const base = (process.env["OCTOPUS_PUBLIC_URL"] ?? "").replace(/\/$/, "");
-  if (!base) return "";
-  // Node-type slug in the path lets us mount distinct webhook routes
-  // per type (Telegram's payload shape is different from a Stripe
-  // or GitHub webhook; a single catch-all would fight itself).
-  const slug = nodeType.split(".")[0];
-  return `${base}/api/hooks/${slug}/${nodeId}`;
-}
-
 function ctxFor(instance: NodeInstance): TriggerContext {
+  const def = getRegistry().find((d) => d.id === instance.type);
   return {
     nodeId: instance.id,
-    webhookUrl: publicWebhookUrl(instance.id, instance.type),
+    webhookUrl: def?.webhookPathSlug
+      ? webhookUrl(instance.id, def.webhookPathSlug)
+      : "",
     trace: (level, message, payload) => appendTrace(instance.id, level, message, payload),
   };
 }

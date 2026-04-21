@@ -43,6 +43,7 @@ export const telegramTrigger: NodeDefinition<Config> = {
   kind: "trigger",
   description:
     "Receives messages sent to your Telegram bot. Paste a bot token from @BotFather and incoming updates stream into the trace panel.",
+  webhookPathSlug: "telegram",
   fields: [
     {
       key: "botToken",
