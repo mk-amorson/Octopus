@@ -14,6 +14,7 @@ import type { GraphLink } from "@/lib/graph/visual";
 export type PublicDef = {
   id: string;
   name: string;
+  category: string;
   description: string;
   graphRole: "hub" | "instance";
   inputs: string[];

@@ -61,6 +61,9 @@ export type TriggerContext = {
 /** Returned by start() — call to tear the trigger down. */
 export type StopFn = () => void | Promise<void>;
 
+// PublicDef consumers need a non-optional category in the serialised
+// shape, but we keep it mandatory on the definition too — every node
+// type must belong to a category.
 export type NodeDefinition<TConfig = Record<string, unknown>> = {
   /** Dotted identifier, e.g. `telegram.trigger`. Stable — used as the
    *  discriminator in persisted config and in the registry. */

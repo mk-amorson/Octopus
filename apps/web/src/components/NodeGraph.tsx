@@ -1,51 +1,72 @@
 "use client";
 
-// 3D force-directed graph of every node in this install. The platform
-// is visually modelled as a central hub with user-created instances
-// orbiting it — each instance's geometry (kind) and colour (category)
-// carry meaning so the topology reads at a glance. Visual factories
-// live in lib/graph/visual.ts; this file owns the lifecycle.
-//
-// Two effects on purpose:
-//   1. Create the ForceGraph3D instance once, on mount. The camera,
-//      force simulation, and WebGL context stay stable across prop
-//      changes — no jarring re-layout when a node is added or
-//      deleted.
-//   2. Re-feed graphData + click handler when the props change.
-//      graphData() does its own diff; the library is fine as long as
-//      we don't recreate the graph under it.
+// 3D force graph of every node in the install. Ported from the
+// reference octohub: a custom requestAnimationFrame loop rotates the
+// Three.js *scene* (not the camera) around the focused node, so
+// whichever node the user has expanded in the sidebar sits at the
+// visual centre of the canvas. `setViewOffset` compensates for the
+// fixed left sidebar so the graph isn't hidden behind it.
 
 import { useEffect, useRef } from "react";
 import ForceGraph3D from "3d-force-graph";
+import * as THREE from "three";
 import { nodeObject, type GraphLink, type GraphNode } from "@/lib/graph/visual";
 
 type GraphInstance = InstanceType<typeof ForceGraph3D>;
-type LooseGraph = GraphInstance & {
-  graphData: (d: { nodes: unknown[]; links: unknown[] }) => void;
+// The library's type surface covers most of what we use but trails
+// its actual runtime — scene(), camera(), cameraPosition() and a few
+// others aren't on the d.ts. We keep the casts narrow and local.
+type Loose = GraphInstance & {
+  graphData: (d: { nodes: unknown[]; links: unknown[] }) => unknown;
+  onBackgroundClick: (cb: () => void) => void;
+  scene: () => THREE.Scene;
+  camera: () => THREE.Camera;
+  cameraPosition: (
+    pos: { x: number; y: number; z: number },
+    lookAt?: { x: number; y: number; z: number },
+    ms?: number,
+  ) => void;
+  width: (n: number) => unknown;
+  height: (n: number) => unknown;
   _destructor?: () => void;
 };
 
 type Props = {
   nodes: GraphNode[];
   links: GraphLink[];
-  /** Called with the clicked node's id. The caller decides how to
-   *  surface that — highlight, open a panel, route, etc. */
   onSelect?: (id: string) => void;
-  /** Called when the user clicks empty space on the canvas — a
-   *  standard "clear selection" affordance. */
   onDeselect?: () => void;
+  /** When set, the scene translates + rotates around this node so the
+   *  camera sees it at the centre of the canvas. null = world origin. */
+  focusNodeId?: string | null;
+  /** Width in pixels of the fixed left sidebar; the canvas shifts its
+   *  camera view by half that so 3D content stays centred in the
+   *  visible area. */
+  sidebarWidth?: number;
 };
 
-export function NodeGraph({ nodes, links, onSelect, onDeselect }: Props) {
+const CAMERA_POS = { x: 0, y: 50, z: 180 };
+
+export function NodeGraph({
+  nodes,
+  links,
+  onSelect,
+  onDeselect,
+  focusNodeId = null,
+  sidebarWidth = 0,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<LooseGraph | null>(null);
-  const selectRef = useRef<typeof onSelect>(onSelect);
-  const deselectRef = useRef<typeof onDeselect>(onDeselect);
+  const graphRef = useRef<Loose | null>(null);
+  const rafRef = useRef(0);
+  const angleRef = useRef(0);
+  const rotatingRef = useRef(true);
+  const focusRef = useRef<string | null>(focusNodeId);
+  const selectRef = useRef(onSelect);
+  const deselectRef = useRef(onDeselect);
   selectRef.current = onSelect;
   deselectRef.current = onDeselect;
 
-  // Mount once — initialise the scene, camera, controls, and resize
-  // observer. Teardown on unmount only; prop changes don't land here.
+  // One-shot scene creation.
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -63,70 +84,102 @@ export function NodeGraph({ nodes, links, onSelect, onDeselect }: Props) {
       .linkDirectionalParticles(2)
       .linkDirectionalParticleSpeed(0.004)
       .linkDirectionalParticleWidth(1)
-      .cameraPosition({ x: 0, y: 0, z: 120 });
+      .cameraPosition(CAMERA_POS, { x: 0, y: 0, z: 0 });
 
-    const controls = graph.controls() as unknown as {
-      addEventListener: (ev: string, cb: () => void) => void;
-      autoRotate: boolean;
-      autoRotateSpeed: number;
-    };
-    controls.autoRotate = true;
-    // 0.2 is about one full turn every 50 s — slow enough to feel
-    // meditative, fast enough to keep the graph from feeling static.
-    controls.autoRotateSpeed = 0.2;
+    const g = graph as unknown as Loose;
+    graphRef.current = g;
 
-    // Pause auto-rotate while the user is interacting; resume after
-    // a 6 s idle so the page doesn't fight the mouse.
-    let resume: ReturnType<typeof setTimeout> | null = null;
-    controls.addEventListener("start", () => {
-      controls.autoRotate = false;
-      if (resume) clearTimeout(resume);
-    });
-    controls.addEventListener("end", () => {
-      if (resume) clearTimeout(resume);
-      resume = setTimeout(() => {
-        controls.autoRotate = true;
-      }, 6000);
-    });
-
-    const onResize = () => graph.width(el.clientWidth).height(el.clientHeight);
-    const ro = new ResizeObserver(onResize);
-    ro.observe(el);
-    onResize();
-
-    graphRef.current = graph as LooseGraph;
-
-    return () => {
-      ro.disconnect();
-      if (resume) clearTimeout(resume);
-      (graph as LooseGraph)._destructor?.();
-      graphRef.current = null;
-    };
-  }, []);
-
-  // Wire click handlers once. The actual callbacks live in refs so
-  // prop changes take effect without rebinding the 3d-force-graph
-  // handlers every render.
-  useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    graph.onNodeClick((raw) => {
-      const n = raw as unknown as GraphNode;
+    g.onBackgroundClick(() => deselectRef.current?.());
+    g.onNodeClick((raw: unknown) => {
+      const n = raw as GraphNode;
       selectRef.current?.(n.id);
     });
-    (graph as unknown as {
-      onBackgroundClick: (cb: () => void) => void;
-    }).onBackgroundClick(() => deselectRef.current?.());
-  }, []);
 
-  // Push new data without tearing the scene down. 3d-force-graph
-  // diffs on node id, so the hub and unchanged instances keep their
-  // simulated positions; only added/removed nodes animate in/out.
+    // Pause the custom rotation on left-button drag; resume 6 s after
+    // the user lets go. No 3d-force-graph autoRotate is used — we
+    // mutate the scene directly in the rAF loop so the rotation axis
+    // can track the focused node.
+    let resume: ReturnType<typeof setTimeout> | null = null;
+    const pause = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      rotatingRef.current = false;
+      if (resume) clearTimeout(resume);
+    };
+    const schedule = () => {
+      if (resume) clearTimeout(resume);
+      resume = setTimeout(() => { rotatingRef.current = true; }, 6000);
+    };
+    el.addEventListener("mousedown", pause);
+    el.addEventListener("mouseup", schedule);
+    el.addEventListener("touchstart", () => (rotatingRef.current = false));
+    el.addEventListener("touchend", schedule);
+
+    const applyViewOffset = () => {
+      // Only PerspectiveCamera carries setViewOffset; 3d-force-graph
+      // uses one but the upstream types return the abstract Camera.
+      const camera = g.camera() as THREE.PerspectiveCamera;
+      const w = el.clientWidth, h = el.clientHeight;
+      if (!camera?.setViewOffset || w === 0 || h === 0) return;
+      // Shift the visible viewport by half the sidebar width so the
+      // scene's origin lands in the centre of the uncovered canvas.
+      // A negative x-offset pushes content right, away from the
+      // sidebar that sits on the left.
+      if (sidebarWidth > 0) camera.setViewOffset(w, h, -sidebarWidth / 2, 0, w, h);
+    };
+    applyViewOffset();
+
+    const ro = new ResizeObserver(() => {
+      g.width(el.clientWidth).height(el.clientHeight);
+      applyViewOffset();
+    });
+    ro.observe(el);
+
+    const tick = () => {
+      const scene = g.scene();
+      if (scene) {
+        if (rotatingRef.current) angleRef.current += 0.002;
+        let tx = 0, ty = 0, tz = 0;
+        const focusId = focusRef.current;
+        if (focusId) {
+          const data = g.graphData() as unknown as {
+            nodes: Array<{ id: string; x?: number; y?: number; z?: number }>;
+          };
+          const f = data.nodes.find((n) => n.id === focusId);
+          if (f) { tx = f.x ?? 0; ty = f.y ?? 0; tz = f.z ?? 0; }
+        }
+        const c = Math.cos(angleRef.current);
+        const s = Math.sin(angleRef.current);
+        scene.rotation.y = angleRef.current;
+        scene.position.set(-tx * c - tz * s, -ty, tx * s - tz * c);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (resume) clearTimeout(resume);
+      ro.disconnect();
+      el.removeEventListener("mousedown", pause);
+      el.removeEventListener("mouseup", schedule);
+      g._destructor?.();
+      graphRef.current = null;
+    };
+  }, [sidebarWidth]);
+
+  // Feed graph data without tearing the scene down.
   useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    graph.graphData({ nodes, links });
+    graphRef.current?.graphData({ nodes, links });
   }, [nodes, links]);
+
+  // Instant camera-reset when focus changes. Matches the reference's
+  // behaviour — the rAF loop above then keeps the scene revolving
+  // around the new centre.
+  useEffect(() => {
+    focusRef.current = focusNodeId;
+    angleRef.current = 0;
+    graphRef.current?.cameraPosition(CAMERA_POS, { x: 0, y: 0, z: 0 }, 0);
+  }, [focusNodeId]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }

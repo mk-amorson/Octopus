@@ -20,6 +20,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {
         id: d.id,
         name: d.name,
+        category: d.category,
         description: d.description,
         graphRole: d.graphRole ?? "instance",
         inputs: d.inputs ?? [],
