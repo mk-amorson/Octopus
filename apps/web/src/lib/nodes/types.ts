@@ -82,6 +82,20 @@ export type NodeDefinition<TConfig = Record<string, unknown>> = {
    */
   webhookPathSlug?: string;
   /**
+   * How the 3D graph should draw this node. "hub" = central platform
+   * marker (icosahedron, hub colour); "instance" = orbiting node
+   * shaped by its `kind`. Defaults to "instance".
+   */
+  graphRole?: "hub" | "instance";
+  /**
+   * Short human labels listed in the sidebar info panel so a visitor
+   * can tell, at a glance, what kind of signals this node consumes
+   * and emits. Connections between instances are derived separately
+   * from the live graph links.
+   */
+  inputs?: string[];
+  outputs?: string[];
+  /**
    * Build a config form's default values from nothing — used when a
    * new node instance is created. Returning an empty object is fine;
    * defined explicitly so TypeScript knows the config shape.

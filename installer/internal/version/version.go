@@ -5,7 +5,7 @@ package version
 // release tag on GitHub and re-bootstraps if they differ.
 //
 // Overridden at release time via -ldflags "-X .../version.Current=vX.Y.Z".
-var Current = "v0.1.32"
+var Current = "v0.1.33"
 
 // Repo is the upstream GitHub slug the installer pulls releases and source
 // archives from.

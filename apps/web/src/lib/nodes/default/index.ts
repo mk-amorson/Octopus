@@ -1,45 +1,27 @@
-// The one node type that ships today. A placeholder / playground for
-// building out the platform UX on a single, stable target. No
-// external integrations, no webhooks, no runtime — pure config so
-// the panel, graph, save/load, and visual affordances get shaken
-// down before any real node type is layered on top.
-//
-// Adding new node types later is a one-file drop under
-// `src/lib/nodes/<slug>/index.ts` + one append to registry.ts.
+// The single node type that ships today: the Octopus Hub. Every
+// install has exactly one instance of this — the central marker on
+// the 3D graph, carrying only a name and a description. No settings,
+// no runtime — the panel shows it read-only for now and future node
+// types (triggers, actions, AI) will connect in around it.
 
 import type { NodeDefinition } from "../types";
 
-type Config = {
-  label: string;
-  notes: string;
-};
-
-export const defaultNode: NodeDefinition<Config> = {
+export const defaultNode: NodeDefinition<Record<string, never>> = {
   id: "node.default",
-  name: "Node",
-  category: "General",
+  name: "Octopus Hub",
+  category: "Platform",
   kind: "trigger",
   description:
-    "Your first node. Rename it, write notes, flip the enabled toggle — every new kind of node we add later will use the same side-panel pattern.",
-  fields: [
-    {
-      key: "label",
-      label: "Label",
-      type: "text",
-      placeholder: "What is this node about?",
-    },
-    {
-      key: "notes",
-      label: "Notes",
-      type: "text",
-      placeholder: "Free-form text. Markdown later.",
-    },
-  ],
-  defaults: () => ({ label: "", notes: "" }),
+    "The core of the platform. Every other node you add connects in around this hub; events flow through it, settings live one layer deeper, and the 3D map always keeps the hub at its centre.",
+  fields: [],
+  graphRole: "hub",
+  inputs: [],
+  outputs: [],
+  defaults: () => ({}),
   async start() {
-    // No runtime for the default node — it's a configurable object,
-    // not a trigger. Return a no-op stop handle so the manager
-    // reconciliation path stays uniform.
+    // Pure config marker — no runtime, no side effects. Return a
+    // no-op stop handle so the manager's reconcile path stays
+    // uniform as real triggers land next to it.
     return async () => {};
   },
 };

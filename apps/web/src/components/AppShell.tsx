@@ -1,30 +1,27 @@
 "use client";
 
 // Chrome around every authenticated page: persistent sidebar on
-// desktop, slide-in drawer on mobile with a burger trigger. Bare by
-// design — just the brand wordmark at the top and a logout button
-// at the bottom. Every node-related UI (catalogue, list, detail,
-// settings) lives on the dashboard itself; the sidebar is pure
-// session chrome.
+// desktop, slide-in drawer on mobile with a burger trigger. The
+// sidebar is three stacked slots — brand / selected-node info /
+// logout. The info slot is driven by SelectionContext: when the
+// user clicks a node on the 3D map, NodeInfo paints itself in;
+// clicking empty space on the graph clears it.
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "./LogoutButton";
+import { NodeInfo } from "./NodeInfo";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
+  useEffect(() => { setOpen(false); }, [pathname]);
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
@@ -52,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside
         className={[
-          "z-40 flex flex-col w-56 bg-black border-r border-white/10",
+          "z-40 flex flex-col w-64 bg-black border-r border-white/10",
           "fixed inset-y-0 left-0 transform transition-transform duration-200 ease-out",
           open ? "translate-x-0" : "-translate-x-full",
           "md:static md:translate-x-0 md:transition-none",
@@ -76,7 +73,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 overflow-y-auto">
+          <NodeInfo />
+        </div>
 
         <div className="border-t border-white/10 p-2">
           <LogoutButton />

@@ -28,16 +28,21 @@ type LooseGraph = GraphInstance & {
 type Props = {
   nodes: GraphNode[];
   links: GraphLink[];
-  /** Called with the clicked instance's id. The caller decides how
-   *  to surface that — open a side panel, navigate, highlight, etc. */
+  /** Called with the clicked node's id. The caller decides how to
+   *  surface that — highlight, open a panel, route, etc. */
   onSelect?: (id: string) => void;
+  /** Called when the user clicks empty space on the canvas — a
+   *  standard "clear selection" affordance. */
+  onDeselect?: () => void;
 };
 
-export function NodeGraph({ nodes, links, onSelect }: Props) {
+export function NodeGraph({ nodes, links, onSelect, onDeselect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<LooseGraph | null>(null);
   const selectRef = useRef<typeof onSelect>(onSelect);
+  const deselectRef = useRef<typeof onDeselect>(onDeselect);
   selectRef.current = onSelect;
+  deselectRef.current = onDeselect;
 
   // Mount once — initialise the scene, camera, controls, and resize
   // observer. Teardown on unmount only; prop changes don't land here.
@@ -99,16 +104,19 @@ export function NodeGraph({ nodes, links, onSelect }: Props) {
     };
   }, []);
 
-  // Wire onNodeClick once. The actual callback lives in a ref so
+  // Wire click handlers once. The actual callbacks live in refs so
   // prop changes take effect without rebinding the 3d-force-graph
-  // handler every render.
+  // handlers every render.
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
     graph.onNodeClick((raw) => {
       const n = raw as unknown as GraphNode;
-      if (n.role === "instance") selectRef.current?.(n.id);
+      selectRef.current?.(n.id);
     });
+    (graph as unknown as {
+      onBackgroundClick: (cb: () => void) => void;
+    }).onBackgroundClick(() => deselectRef.current?.());
   }, []);
 
   // Push new data without tearing the scene down. 3d-force-graph

@@ -24,6 +24,7 @@ export function NodeGraphLoader(props: {
   nodes: GraphNode[];
   links: GraphLink[];
   onSelect?: (id: string) => void;
+  onDeselect?: () => void;
 }) {
   return <NodeGraph {...props} />;
 }
