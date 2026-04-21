@@ -37,6 +37,21 @@ const INSTANCE_RADIUS = 4;
 const ACTION_SIDE = 6; // cube side length
 const LABEL_GAP = 3;
 
+// Grid overlay painted behind the (transparent) Three.js canvas.
+// Keeps the UI from looking like a black void and visually anchors
+// the free-floating nodes. One place defines it; GraphCanvas and
+// the <NodeGraph> both read from here.
+export const GRID_BG = {
+  // Paired horizontal + vertical linear-gradients draw a pin-stripe
+  // lattice. Line weight kept at 1px so it doesn't compete with the
+  // nodes themselves; 5% white is readable on the black body without
+  // overpowering the pixel-font labels.
+  backgroundImage:
+    "linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), " +
+    "linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)",
+  backgroundSize: "80px 80px",
+} as const;
+
 function geometryFor(n: GraphNode): THREE.BufferGeometry {
   if (n.role === "hub") return new THREE.IcosahedronGeometry(HUB_RADIUS, 0);
   if (n.kind === "trigger") return new THREE.OctahedronGeometry(INSTANCE_RADIUS, 0);

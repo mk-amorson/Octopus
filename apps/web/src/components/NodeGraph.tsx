@@ -68,7 +68,9 @@ export function NodeGraph({
     const fontFamily = getComputedStyle(document.body).fontFamily;
 
     const graph = new ForceGraph3D(el)
-      .backgroundColor("#000000")
+      // Transparent scene background so the grid the GraphCanvas
+      // wrapper paints behind this canvas shows through.
+      .backgroundColor("rgba(0,0,0,0)")
       .showNavInfo(false)
       .nodeThreeObject((raw) => nodeObject(raw as unknown as GraphNode, { fontFamily }))
       // No .nodeLabel() — the SpriteText inside nodeObject() is the
