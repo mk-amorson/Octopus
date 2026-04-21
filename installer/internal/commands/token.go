@@ -60,10 +60,11 @@ func tokenRotate() error {
 	if err := stack.Render(srcDir, next); err != nil {
 		return fmt.Errorf("render compose: %w", err)
 	}
-	// `up -d` with a changed environment recreates the container —
-	// docker compose diffs the env and notices the change. Build is
-	// not needed because OCTOPUS_TOKEN is runtime, not build-time.
-	if err := stack.Up(srcDir); err != nil {
+	// --force-recreate: docker compose sometimes doesn't notice env-
+	// value-only changes in the compose file unless the image tag or
+	// volume layout also moved. Force the recreate so the new
+	// OCTOPUS_TOKEN is actually live in the running container.
+	if err := stack.UpForce(srcDir); err != nil {
 		return fmt.Errorf("restart container: %w", err)
 	}
 	if err := state.Save(&next); err != nil {

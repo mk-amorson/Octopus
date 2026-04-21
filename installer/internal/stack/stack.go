@@ -77,6 +77,14 @@ func Up(srcDir string) error {
 	return docker.Compose(srcDir, state.ComposeProject, "-f", composeFile, "up", "-d", "web")
 }
 
+// UpForce is Up but adds --force-recreate. Used when we changed the
+// compose file in a way docker compose sometimes doesn't auto-detect
+// (e.g. environment-variable value changes), so we explicitly want a
+// fresh container.
+func UpForce(srcDir string) error {
+	return docker.Compose(srcDir, state.ComposeProject, "-f", composeFile, "up", "-d", "--force-recreate", "web")
+}
+
 // Down stops and removes the container but keeps the built image around, so
 // `octopus start` after `octopus stop` is cheap.
 func Down(srcDir string) error {
