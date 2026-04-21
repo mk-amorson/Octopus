@@ -45,23 +45,29 @@ func Ensure() error {
 	return nil
 }
 
-// check returns (true, nil) when docker AND docker-compose are usable.
-// Returns (false, nil) when docker is simply missing from PATH — that's
-// the signal to offer install. Returns (false, err) when docker is
-// present but broken (daemon not running, compose plugin missing) —
-// we surface the underlying message instead of offering install, since
-// reinstalling won't help.
+// check returns (true, nil) when docker AND a compose implementation
+// are usable. Returns (false, nil) when docker is simply missing from
+// PATH — that's the signal to offer install. Returns (false, err) when
+// docker is present but compose isn't (daemon not running, no v2
+// plugin and no v1 binary) — we surface the underlying message instead
+// of offering install, since reinstalling won't help.
 func check() (bool, error) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return false, nil
 	}
+	// Prefer the v2 plugin; accept v1 standalone as a fallback so users
+	// on older distros without docker-compose-plugin aren't stranded.
+	if err := exec.Command("docker", "compose", "version").Run(); err == nil {
+		return true, nil
+	}
+	if _, err := exec.LookPath("docker-compose"); err == nil {
+		return true, nil
+	}
 	var stderr bytes.Buffer
 	cmd := exec.Command("docker", "compose", "version")
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("docker compose not usable: %w\n%s", err, stderr.String())
-	}
-	return true, nil
+	err := cmd.Run()
+	return false, fmt.Errorf("docker compose not usable (tried v2 plugin and v1 standalone): %w\n%s", err, stderr.String())
 }
 
 func tryInstall() error {

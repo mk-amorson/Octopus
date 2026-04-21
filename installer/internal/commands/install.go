@@ -115,28 +115,34 @@ func Install() error {
 }
 
 // printPathHintIfNeeded warns the user when `octopus` isn't on PATH in
-// their current shell yet. The bootstrap appends an `export` to shell rc
-// files, but that only takes effect on a new login. Without this hint
-// "Octopus is up" is immediately followed by `octopus status` → "command
-// not found", which is a confusing first experience.
-//
-// Skipped on Windows: the bootstrap uses SetEnvironmentVariable at User
-// scope, which new terminals inherit. Already-open console windows don't,
-// but there's no single one-liner that works across cmd and PowerShell.
+// their current shell yet. The bootstrap shim writes an `export` into
+// shell rc files on Unix and sets the User-scope PATH via the Win32
+// API on Windows — both only take effect in new shells. Without this
+// hint "Octopus is up" is immediately followed by `octopus status` →
+// "command not found", a confusing first experience.
 func printPathHintIfNeeded() {
-	if runtime.GOOS == "windows" {
-		return
-	}
 	binDir, err := state.BinDir()
 	if err != nil {
 		return
 	}
-	for _, p := range strings.Split(os.Getenv("PATH"), ":") {
-		if p == binDir {
+	sep := ":"
+	if runtime.GOOS == "windows" {
+		sep = ";"
+	}
+	for _, p := range strings.Split(os.Getenv("PATH"), sep) {
+		if strings.EqualFold(p, binDir) {
 			return
 		}
 	}
 	fmt.Println()
+	if runtime.GOOS == "windows" {
+		fmt.Println("  Note: new terminals will pick up `octopus` on PATH automatically.")
+		fmt.Println("  To use it in THIS window right now:")
+		fmt.Println()
+		fmt.Printf("    $env:Path += ';%s'        (PowerShell)\n", binDir)
+		fmt.Printf("    set PATH=%%PATH%%;%s      (cmd.exe)\n", binDir)
+		return
+	}
 	fmt.Println("  Note: new shells will pick up `octopus` on PATH automatically.")
 	fmt.Println("  To use it in THIS shell right now, run:")
 	fmt.Println()

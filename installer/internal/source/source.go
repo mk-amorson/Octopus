@@ -15,6 +15,11 @@ import (
 	"github.com/mk-amorson/Octopus/installer/internal/version"
 )
 
+// maxTarballBytes caps decompressed archive size. The real repo sits
+// well under this; the cap is there so a hostile or corrupted response
+// can't fill the user's disk before the tar walker notices.
+const maxTarballBytes = 200 * 1024 * 1024 // 200 MiB
+
 // Download fetches the source tarball for tag `tag` (e.g. "v0.1.0") from
 // GitHub's automatic archive endpoint and extracts it into destDir, stripping
 // the top-level `<repo>-<sha>/` directory so destDir ends up containing the
@@ -48,11 +53,19 @@ func Download(tag, destDir string) error {
 		return fmt.Errorf("mkdir %s: %w", destDir, err)
 	}
 
-	gz, err := gzip.NewReader(resp.Body)
+	// Bound decompressed size before we even start reading tar entries.
+	// gzip.NewReader reads from this, so the cap applies to the whole
+	// extracted archive, not per-entry.
+	gz, err := gzip.NewReader(io.LimitReader(resp.Body, maxTarballBytes))
 	if err != nil {
 		return fmt.Errorf("gunzip: %w", err)
 	}
 	defer gz.Close()
+
+	destAbs, err := filepath.Abs(destDir)
+	if err != nil {
+		return err
+	}
 
 	tr := tar.NewReader(gz)
 	for {
@@ -68,12 +81,10 @@ func Download(tag, destDir string) error {
 		if len(parts) < 2 || parts[1] == "" {
 			continue
 		}
-		rel := parts[1]
-		// Defend against tar entries that try to escape destDir.
-		if strings.Contains(rel, "..") {
-			return fmt.Errorf("refusing tar entry with ..: %s", h.Name)
+		target, err := safeJoin(destAbs, parts[1])
+		if err != nil {
+			return fmt.Errorf("refusing tar entry %q: %w", h.Name, err)
 		}
-		target := filepath.Join(destDir, rel)
 
 		switch h.Typeflag {
 		case tar.TypeDir:
@@ -100,6 +111,20 @@ func Download(tag, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// safeJoin resolves `rel` against `baseAbs` and guarantees the result
+// stays inside baseAbs. Rejects entries that, after `filepath.Clean`,
+// escape via ".." segments or absolute paths. Substring checks like
+// `Contains(rel, "..")` miss tricks like "foo/./../bar" and are
+// over-eager on legitimate names like "..jpg" — resolve the cleaned
+// path and verify with HasPrefix instead.
+func safeJoin(baseAbs, rel string) (string, error) {
+	target := filepath.Join(baseAbs, rel)
+	if target != baseAbs && !strings.HasPrefix(target, baseAbs+string(os.PathSeparator)) {
+		return "", fmt.Errorf("escapes destination directory")
+	}
+	return target, nil
 }
 
 // LatestTag resolves the newest release tag on GitHub for Repo. Uses the

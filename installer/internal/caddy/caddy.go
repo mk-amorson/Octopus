@@ -52,11 +52,33 @@ func Setup(domain string, port int) error {
 // Remove drops the Caddyfile written by Setup and reloads Caddy so it
 // stops serving the domain. Best-effort — if Caddy is gone or the file
 // never existed we don't care.
+//
+// Safety: only deletes the file when the installer's marker line is
+// present; if a user's own Caddyfile somehow lives at the same path,
+// leave it alone. If a .bak from Setup exists, roll it back into place
+// so the user's pre-existing config returns exactly as it was.
 func Remove() error {
 	if runtime.GOOS != "linux" {
 		return nil
 	}
+	data, err := os.ReadFile(caddyfilePath)
+	if err != nil {
+		// No file or unreadable — nothing to do. Still try a reload
+		// below in case caddy is holding an old config.
+		_ = sudoRun("systemctl", "reload", "caddy")
+		return nil
+	}
+	if !strings.Contains(string(data), marker) {
+		fmt.Printf("==> %s is not ours (no installer marker); leaving it in place\n", caddyfilePath)
+		return nil
+	}
 	_ = sudoRun("rm", "-f", caddyfilePath)
+	// If Setup left a .bak, restore it. `mv` is atomic and replaces
+	// whatever rm missed.
+	if _, err := os.Stat(caddyfilePath + ".bak"); err == nil {
+		fmt.Printf("==> restoring %s from .bak\n", caddyfilePath)
+		_ = sudoRun("mv", caddyfilePath+".bak", caddyfilePath)
+	}
 	_ = sudoRun("systemctl", "reload", "caddy")
 	return nil
 }

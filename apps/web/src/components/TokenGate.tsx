@@ -5,11 +5,17 @@
 // (checking / ok / bad), but every geometric concern — padding,
 // border, font, line-height, height, width — lives on the wrapper.
 // Children just inherit. There is no second copy of any measurement
-// to keep in sync, and the placeholder, the input value, and the
-// result message all render in the same spot because they all sit
-// in the same flex slot inside the wrapper.
+// to keep in sync; the placeholder, the input value, and the result
+// message all render in the same spot because they all sit in the
+// same flex slot inside the wrapper.
+//
+// On a valid token the component doesn't linger — it POSTs to
+// /api/auth/login which sets the session cookie, then navigates to
+// the dashboard. Middleware takes over from there.
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiUrl, ROUTES } from "@/lib/auth/config";
 
 const TOKEN_LENGTH = 64;
 
@@ -22,20 +28,19 @@ const LOGO_TRIMMED_EM = 2.9375;
 // edge — about two logo-pixels.
 const TOP_GAP_EM = 0.125;
 
-// Next.js doesn't auto-prefix fetch strings the way it does Link
-// hrefs. Bake basePath in client-side ourselves.
-const BASE_PATH = process.env.NEXT_PUBLIC_OCTOPUS_BASE_PATH ?? "";
-
-type Status = "idle" | "checking" | "ok" | "bad";
+type Status = "idle" | "checking" | "ok" | "bad" | "throttled";
 
 const MESSAGE: Record<Status, string> = {
   idle: "",
   checking: "checking",
   ok: "success",
   bad: "wrong token",
+  throttled: "too many tries",
 };
 
 export function TokenGate() {
+  const router = useRouter();
+  const params = useSearchParams();
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [tick, setTick] = useState(0);
@@ -59,9 +64,9 @@ export function TokenGate() {
     };
   }, [status]);
 
-  // After a "bad → idle" retry we want the input to be focused so
-  // the user can type immediately. Don't focus on the first mount
-  // (that would steal focus on page load) — the ref flag gates it.
+  // After a "bad → idle" retry we want the input focused so the user
+  // can type immediately. Don't focus on first mount (that would steal
+  // focus on page load) — the ref flag gates it.
   useEffect(() => {
     if (status === "idle" && wantFocusOnIdle.current) {
       wantFocusOnIdle.current = false;
@@ -74,30 +79,45 @@ export function TokenGate() {
     const next = raw.slice(0, TOKEN_LENGTH);
     setValue(next);
     if (next.length === TOKEN_LENGTH) {
-      void verify(next);
+      void submit(next);
     }
   }
 
-  async function verify(token: string) {
+  async function submit(token: string) {
     setStatus("checking");
+    let res: Response;
     try {
-      const res = await fetch(`${BASE_PATH}/api/verify-token`, {
+      res = await fetch(apiUrl(ROUTES.apiLogin), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      setStatus(res.ok ? "ok" : "bad");
     } catch {
       setStatus("bad");
+      setValue("");
+      return;
     }
+    if (res.ok) {
+      setStatus("ok");
+      setValue("");
+      const redirect = params.get("redirect") || ROUTES.home;
+      // Brief pause so the "success" animation plays before the
+      // page falls away under the user. refresh() re-runs middleware
+      // so the new cookie takes effect for the navigation.
+      setTimeout(() => {
+        router.replace(redirect);
+        router.refresh();
+      }, 350);
+      return;
+    }
+    setStatus(res.status === 429 ? "throttled" : "bad");
     setValue("");
   }
 
   function retry() {
-    // Only "bad" is recoverable: clicking either the message or the
-    // wrapper drops us back to a fresh input. "ok" stays sticky;
-    // "checking" should be left alone.
-    if (status !== "bad") return;
+    // Only recoverable states reset on click. "ok" stays sticky (we
+    // are about to navigate away anyway), "checking" is left alone.
+    if (status !== "bad" && status !== "throttled") return;
     wantFocusOnIdle.current = true;
     setStatus("idle");
   }
@@ -109,19 +129,14 @@ export function TokenGate() {
 
   return (
     <div
-      // font-pixel is what pins the whole gate to the octopus-pixel
-      // font-family; without it the tree falls back to sans.
+      // font-pixel pins the whole gate to octopus-pixel; without it
+      // the tree falls back to sans.
       className="token-gate font-pixel"
       data-status={status}
-      onClick={status === "bad" ? retry : undefined}
-      // Two instance-level overrides. Nothing else: fontSize is
-      // *deliberately* not set here so `em` values in the inline
-      // styles (and in the CSS rules below) measure in the logo's
-      // font-size, which is what we inherit from the parent column.
-      style={{
-        width: `${LOGO_TRIMMED_EM}em`,
-        marginTop: `${TOP_GAP_EM}em`,
-      }}
+      onClick={status === "bad" || status === "throttled" ? retry : undefined}
+      // Instance-level overrides only. Deliberately no fontSize here
+      // so `em` measurements below resolve in the logo's font-size.
+      style={{ width: `${LOGO_TRIMMED_EM}em`, marginTop: `${TOP_GAP_EM}em` }}
     >
       {status === "idle" ? (
         <input

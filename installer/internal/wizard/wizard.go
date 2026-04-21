@@ -5,11 +5,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/mk-amorson/Octopus/installer/internal/state"
+)
+
+// Conservative whitelists for inputs that later end up in rendered
+// YAML (compose) or Caddyfile. Both of those formats treat unescaped
+// colons, braces, quotes and newlines as structure — we'd rather
+// reject weird input at the wizard than ship an injectable template.
+var (
+	// Valid domain labels per RFC 1035-ish, plus support for a trailing
+	// dot. Disallows anything that isn't letters/digits/hyphen/dot.
+	domainRegexp = regexp.MustCompile(`^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?$`)
+	// basePath after normalisation looks like "/hub" or "/some/path":
+	// leading slash, url-safe characters only, no consecutive slashes,
+	// no trailing slash.
+	basePathRegexp = regexp.MustCompile(`^(?:/[A-Za-z0-9_-]+)+$`)
 )
 
 // Answers holds everything the install wizard needs to collect before it
@@ -100,10 +115,10 @@ func askDomain(r *bufio.Reader, def string) (string, error) {
 		if s == "" {
 			return def, nil
 		}
-		// A crude sanity check — reject things that obviously aren't
-		// hostnames. We don't want to try to cover every edge case; Caddy
-		// will give a clearer error if something's wrong.
-		if strings.Contains(s, "://") || strings.Contains(s, " ") || !strings.Contains(s, ".") {
+		// The Caddyfile is built by interpolating this value; whitelist
+		// strictly so no one can smuggle a newline or `{` in through
+		// the wizard and end up with injected config.
+		if !domainRegexp.MatchString(s) {
 			fmt.Println("  that doesn't look like a domain (expected e.g. example.com)")
 			continue
 		}
@@ -161,6 +176,12 @@ func askBasePath(r *bufio.Reader, def string) (string, error) {
 		s = strings.TrimRight(s, "/")
 		if s == "" {
 			return "", nil
+		}
+		// The subpath is baked into a YAML string in the rendered
+		// compose file; keep it ASCII-safe so nothing can break out.
+		if !basePathRegexp.MatchString(s) {
+			fmt.Println("  subpath must contain only letters, digits, '_' or '-' between slashes (e.g. /app, /hub/prod)")
+			continue
 		}
 		return s, nil
 	}
