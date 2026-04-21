@@ -76,12 +76,21 @@ function statusColor(n: GraphNode): string {
   return STATUS.disabled.color;
 }
 
+// Wireframe overlay along the polygon edges of the node mesh —
+// what makes an icosahedron / octahedron / cube read as a faceted
+// 3D object instead of a smooth blob. Lifted from the reference
+// octohub. Scale 1.03 lifts the lines just outside the mesh surface
+// so they don't z-fight with the filled faces underneath.
+const WIREFRAME_OPACITY = 0.3;
+const WIREFRAME_SCALE = 1.03;
+
 export function nodeObject(n: GraphNode, opts: NodeObjectOptions = {}): THREE.Object3D {
   const group = new THREE.Group();
   const color = colorForNode(n);
+  const geometry = geometryFor(n);
 
   const mesh = new THREE.Mesh(
-    geometryFor(n),
+    geometry,
     new THREE.MeshStandardMaterial({
       color,
       emissive: color,
@@ -91,6 +100,17 @@ export function nodeObject(n: GraphNode, opts: NodeObjectOptions = {}): THREE.Ob
     }),
   );
   group.add(mesh);
+
+  const wire = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({
+      color: "#ffffff",
+      transparent: true,
+      opacity: WIREFRAME_OPACITY,
+    }),
+  );
+  wire.scale.setScalar(WIREFRAME_SCALE);
+  group.add(wire);
 
   const label = new SpriteText(n.label);
   label.color = "#ffffff";

@@ -29,12 +29,7 @@ export function GraphCanvas({
       : 0;
 
   return (
-    // 1 px white frame around the canvas — visually closes the graph
-    // off as a panel, on every viewport regardless of session.
-    // box-sizing: border-box (Tailwind default) means the border
-    // sits inside the 100%×100% box, the grid + canvas size against
-    // the inner edge, no extra layout math.
-    <div className="relative w-full h-full bg-black border border-white">
+    <div className="relative w-full h-full bg-black">
       <div className="absolute inset-0 pointer-events-none" style={GRID_BG} />
       <NodeGraphLoader
         nodes={graphNodes}
