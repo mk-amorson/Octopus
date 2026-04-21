@@ -16,7 +16,6 @@
 //      we don't recreate the graph under it.
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import ForceGraph3D from "3d-force-graph";
 import { nodeObject, type GraphLink, type GraphNode } from "@/lib/graph/visual";
 
@@ -26,12 +25,19 @@ type LooseGraph = GraphInstance & {
   _destructor?: () => void;
 };
 
-type Props = { nodes: GraphNode[]; links: GraphLink[] };
+type Props = {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  /** Called with the clicked instance's id. The caller decides how
+   *  to surface that — open a side panel, navigate, highlight, etc. */
+  onSelect?: (id: string) => void;
+};
 
-export function NodeGraph({ nodes, links }: Props) {
+export function NodeGraph({ nodes, links, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<LooseGraph | null>(null);
-  const router = useRouter();
+  const selectRef = useRef<typeof onSelect>(onSelect);
+  selectRef.current = onSelect;
 
   // Mount once — initialise the scene, camera, controls, and resize
   // observer. Teardown on unmount only; prop changes don't land here.
@@ -93,17 +99,17 @@ export function NodeGraph({ nodes, links }: Props) {
     };
   }, []);
 
-  // Keep the click handler binding the current router — function
-  // identity changes per render but `.onNodeClick` accepts a fresh
-  // handler each time.
+  // Wire onNodeClick once. The actual callback lives in a ref so
+  // prop changes take effect without rebinding the 3d-force-graph
+  // handler every render.
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
     graph.onNodeClick((raw) => {
       const n = raw as unknown as GraphNode;
-      if (n.role === "instance") router.push(`/nodes/${n.id}`);
+      if (n.role === "instance") selectRef.current?.(n.id);
     });
-  }, [router]);
+  }, []);
 
   // Push new data without tearing the scene down. 3d-force-graph
   // diffs on node id, so the hub and unchanged instances keep their

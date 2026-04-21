@@ -20,6 +20,10 @@ const NodeGraph = dynamic(
   },
 );
 
-export function NodeGraphLoader(props: { nodes: GraphNode[]; links: GraphLink[] }) {
+export function NodeGraphLoader(props: {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  onSelect?: (id: string) => void;
+}) {
   return <NodeGraph {...props} />;
 }

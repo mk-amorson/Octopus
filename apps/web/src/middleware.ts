@@ -72,9 +72,9 @@ export const config = {
   //          cached static dashboard to every visitor regardless of
   //          their cookie. Explicitly listing "/" is the fix.
   //   - the second pattern covers every non-root path, minus Next's
-  //     own asset pipeline, the auth endpoints (always reachable
-  //     without a session cookie so a fresh visitor can log in), and
-  //     `api/hooks/*` (third-party webhook inboxes — Telegram,
-  //     Stripe, GitHub — can't authenticate with a session).
-  matcher: ["/", "/((?!_next|favicon.ico|fonts|api/auth|api/hooks).+)"],
+  //     own asset pipeline and the auth endpoints (always reachable
+  //     without a session cookie so a fresh visitor can log in).
+  //     `/api/hooks/*` will get added back the moment we ship a node
+  //     type that owns a webhook (Telegram, Stripe, GitHub, …).
+  matcher: ["/", "/((?!_next|favicon.ico|fonts|api/auth).+)"],
 };

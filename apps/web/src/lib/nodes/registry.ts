@@ -3,42 +3,25 @@
 //   2. export a NodeDefinition from its index.ts
 //   3. append it to the array below
 //
-// A filesystem scan would save that third line but costs static type
-// inference and a dynamic import graph — not worth it until a
-// plugin marketplace is on the roadmap.
+// One-file-per-type + explicit array keeps static type inference and
+// avoids a filesystem-scan dynamic-import graph we don't need yet.
 
 import type { NodeDefinition } from "./types";
-import { telegramTrigger } from "./telegram-trigger";
+import { defaultNode } from "./default";
 
-// A heterogeneous array of NodeDefinition<TConfig> with different
-// TConfigs doesn't fit a single parameterised type in TypeScript.
-// `NodeDefinition<any>` is the pragmatic escape hatch — every
-// call-site that actually runs a node casts the config to the node's
-// own shape at the last possible moment.
+// Heterogeneous NodeDefinition<TConfig> with different TConfigs
+// doesn't fit a single parameterised type in TypeScript — every
+// runtime call-site casts back at the last moment.
 type AnyDef = NodeDefinition<Record<string, unknown>>;
 
-// The cast is necessary because TriggerContext / start() is
-// contravariant in TConfig: telegramTrigger's concrete Config type
-// doesn't widen to Record<string, unknown> on its own. Every runtime
-// call-site (manager.ts) passes the stored config back through as
-// an unknown-shaped record and that's what we actually see.
 const NODES: ReadonlyArray<AnyDef> = [
-  telegramTrigger as unknown as AnyDef,
+  defaultNode as unknown as AnyDef,
 ] as const;
 
-/**
- * Returns the registered node types. Wrapped in a function so tests
- * and future filesystem-scan modes slot in without touching callers.
- */
 export function getRegistry(): ReadonlyArray<AnyDef> {
   return NODES;
 }
 
-/**
- * Group by category, preserving the order nodes were registered.
- * The sidebar renders this directly — a flat map of
- * "category label → nodes in it".
- */
 export function byCategory(): Array<{ category: string; nodes: AnyDef[] }> {
   const groups = new Map<string, AnyDef[]>();
   for (const n of getRegistry()) {

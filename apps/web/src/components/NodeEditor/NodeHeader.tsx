@@ -13,7 +13,6 @@ type Props = {
   running: boolean;
   onRename: (name: string) => void;
   onToggleEnabled: (v: boolean) => void;
-  onDelete: () => void;
 };
 
 export function NodeHeader({
@@ -22,7 +21,6 @@ export function NodeHeader({
   running,
   onRename,
   onToggleEnabled,
-  onDelete,
 }: Props) {
   const status = STATUS[statusFor(enabled, running)];
   return (
@@ -48,13 +46,6 @@ export function NodeHeader({
         />
         enabled
       </label>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="text-xs text-white/40 hover:text-red-400 transition-colors"
-      >
-        delete
-      </button>
     </header>
   );
 }
