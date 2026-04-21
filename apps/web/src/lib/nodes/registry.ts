@@ -9,21 +9,14 @@
 import type { NodeDefinition } from "./types";
 import { defaultNode } from "./default";
 
-// Heterogeneous NodeDefinition<TConfig> with different TConfigs
-// doesn't fit a single parameterised type in TypeScript — every
-// runtime call-site casts back at the last moment.
-type AnyDef = NodeDefinition<Record<string, unknown>>;
+const NODES: ReadonlyArray<NodeDefinition> = [defaultNode];
 
-const NODES: ReadonlyArray<AnyDef> = [
-  defaultNode as unknown as AnyDef,
-] as const;
-
-export function getRegistry(): ReadonlyArray<AnyDef> {
+export function getRegistry(): ReadonlyArray<NodeDefinition> {
   return NODES;
 }
 
-export function byCategory(): Array<{ category: string; nodes: AnyDef[] }> {
-  const groups = new Map<string, AnyDef[]>();
+export function byCategory(): Array<{ category: string; nodes: NodeDefinition[] }> {
+  const groups = new Map<string, NodeDefinition[]>();
   for (const n of getRegistry()) {
     const list = groups.get(n.category) ?? [];
     list.push(n);

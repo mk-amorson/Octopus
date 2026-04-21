@@ -7,6 +7,13 @@ import * as THREE from "three";
 import SpriteText from "three-spritetext";
 import { HUB_COLOR, STATUS, colorFor } from "@/lib/nodes/theme";
 
+// NodeObject/LinkObject from three-forcegraph are `object & { id?, x?,
+// y?, z?, … }` — every position/velocity field optional. We declare
+// the simulation-populated fields here so our GraphNode is structurally
+// assignable to the library's generic parameter (three-forcegraph adds
+// x/y/z/vx/…/__threeObj at runtime). Keeping the declarations next to
+// our own fields means the library's type constraints stay visible
+// right where a new node visual is authored.
 export type GraphNode = {
   id: string;
   label: string;
@@ -16,9 +23,20 @@ export type GraphNode = {
   category?: string;
   running?: boolean;
   enabled?: boolean;
+  // Populated by the force simulation; never set by producers.
+  x?: number;
+  y?: number;
+  z?: number;
+  // Attached by three-forcegraph when it mounts the nodeThreeObject
+  // into the scene. The label-anchor rAF loop reads it to re-place
+  // the sprite each frame.
+  __threeObj?: THREE.Object3D;
 };
 
-export type GraphLink = { source: string; target: string };
+export type GraphLink = {
+  source: string;
+  target: string;
+};
 
 export type NodeObjectOptions = {
   /** CSS font-family string that the Three.js sprite text will use.

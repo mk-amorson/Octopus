@@ -28,6 +28,14 @@ const LOGO_TRIMMED_EM = 2.9375;
 // edge — about two logo-pixels.
 const TOP_GAP_EM = 0.125;
 
+// Three-dot spinner cadence. Slow enough the user registers the motion
+// as "still working" and fast enough to not feel frozen on a slow link.
+const SPINNER_TICK_MS = 250;
+
+// After a successful auth we linger briefly so the "success" message
+// plays before the navigation. Kept short — users want to proceed.
+const SUCCESS_REDIRECT_DELAY_MS = 350;
+
 type Status = "idle" | "checking" | "ok" | "bad" | "throttled";
 
 const MESSAGE: Record<Status, string> = {
@@ -57,7 +65,7 @@ export function TokenGate() {
       tickRef.current = null;
       return;
     }
-    tickRef.current = setInterval(() => setTick((t) => t + 1), 250);
+    tickRef.current = setInterval(() => setTick((t) => t + 1), SPINNER_TICK_MS);
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
@@ -107,7 +115,7 @@ export function TokenGate() {
       setTimeout(() => {
         router.replace(redirect);
         router.refresh();
-      }, 350);
+      }, SUCCESS_REDIRECT_DELAY_MS);
       return;
     }
     setStatus(res.status === 429 ? "throttled" : "bad");

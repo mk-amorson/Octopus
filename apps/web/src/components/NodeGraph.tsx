@@ -8,25 +8,9 @@
 // never hidden behind the geometry.
 
 import { useEffect, useRef } from "react";
-import ForceGraph3D from "3d-force-graph";
 import * as THREE from "three";
 import { nodeObject, type GraphLink, type GraphNode } from "@/lib/graph/visual";
-
-type GraphInstance = InstanceType<typeof ForceGraph3D>;
-type Loose = GraphInstance & {
-  graphData: (d?: { nodes: unknown[]; links: unknown[] }) => { nodes: unknown[]; links: unknown[] };
-  onBackgroundClick: (cb: () => void) => void;
-  scene: () => THREE.Scene;
-  camera: () => THREE.Camera;
-  cameraPosition: (
-    pos: { x: number; y: number; z: number },
-    lookAt?: { x: number; y: number; z: number },
-    ms?: number,
-  ) => void;
-  width: (n: number) => unknown;
-  height: (n: number) => unknown;
-  _destructor?: () => void;
-};
+import { createGraph, type Graph } from "@/lib/graph/forceGraph";
 
 type Props = {
   nodes: GraphNode[];
@@ -37,7 +21,24 @@ type Props = {
   sidebarWidth?: number;
 };
 
-const CAMERA_POS = { x: 0, y: 50, z: 180 };
+// Camera placement + tuning. All hardcoded timings/speeds live here
+// so a future polish pass has one knob per feel-axis.
+const CAMERA_POS = { x: 0, y: 50, z: 180 } as const;
+const LOOK_AT = { x: 0, y: 0, z: 0 } as const;
+const BACKGROUND_TRANSPARENT = "rgba(0,0,0,0)";
+const LINK_COLOUR = "rgba(255,255,255,0.22)";
+const LINK_WIDTH = 1;
+const PARTICLE_COUNT = 2;
+const PARTICLE_SPEED = 0.004;
+const PARTICLE_WIDTH = 1;
+// Ambient rotation of the scene (radians / frame). Resumes this many
+// ms after the user releases the mouse, so drags don't fight the spin.
+const ROTATION_STEP_RAD = 0.002;
+const ROTATION_RESUME_DELAY_MS = 6000;
+// High renderOrder on the label sprite lifts it above the node mesh
+// even when the camera flies through. Matched to SpriteText inside
+// visual.ts — both files' numbers never need to sync because only
+// this one reads runtime state from __threeObj.userData.labelOffset.
 
 export function NodeGraph({
   nodes,
@@ -48,7 +49,7 @@ export function NodeGraph({
   sidebarWidth = 0,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<Loose | null>(null);
+  const graphRef = useRef<Graph | null>(null);
   const rafRef = useRef(0);
   const angleRef = useRef(0);
   const rotatingRef = useRef(true);
@@ -67,30 +68,26 @@ export function NodeGraph({
     // type on every text surface in the app.
     const fontFamily = getComputedStyle(document.body).fontFamily;
 
-    const graph = new ForceGraph3D(el)
+    const graph = createGraph(el)
       // Transparent scene background so the grid the GraphCanvas
       // wrapper paints behind this canvas shows through.
-      .backgroundColor("rgba(0,0,0,0)")
+      .backgroundColor(BACKGROUND_TRANSPARENT)
       .showNavInfo(false)
-      .nodeThreeObject((raw) => nodeObject(raw as unknown as GraphNode, { fontFamily }))
+      .nodeThreeObject((n) => nodeObject(n, { fontFamily }))
       // No .nodeLabel() — the SpriteText inside nodeObject() is the
       // one and only label; the DOM hover tooltip would be a second
       // copy in system fonts.
-      .linkColor(() => "rgba(255,255,255,0.22)")
-      .linkWidth(1)
-      .linkDirectionalParticles(2)
-      .linkDirectionalParticleSpeed(0.004)
-      .linkDirectionalParticleWidth(1)
-      .cameraPosition(CAMERA_POS, { x: 0, y: 0, z: 0 });
+      .linkColor(() => LINK_COLOUR)
+      .linkWidth(LINK_WIDTH)
+      .linkDirectionalParticles(PARTICLE_COUNT)
+      .linkDirectionalParticleSpeed(PARTICLE_SPEED)
+      .linkDirectionalParticleWidth(PARTICLE_WIDTH)
+      .cameraPosition(CAMERA_POS, LOOK_AT);
 
-    const g = graph as unknown as Loose;
-    graphRef.current = g;
+    graphRef.current = graph;
 
-    g.onBackgroundClick(() => deselectRef.current?.());
-    g.onNodeClick((raw: unknown) => {
-      const n = raw as GraphNode;
-      selectRef.current?.(n.id);
-    });
+    graph.onBackgroundClick(() => deselectRef.current?.());
+    graph.onNodeClick((n) => selectRef.current?.(n.id));
 
     let resume: ReturnType<typeof setTimeout> | null = null;
     const pause = (e: MouseEvent) => {
@@ -100,7 +97,7 @@ export function NodeGraph({
     };
     const schedule = () => {
       if (resume) clearTimeout(resume);
-      resume = setTimeout(() => { rotatingRef.current = true; }, 6000);
+      resume = setTimeout(() => { rotatingRef.current = true; }, ROTATION_RESUME_DELAY_MS);
     };
     el.addEventListener("mousedown", pause);
     el.addEventListener("mouseup", schedule);
@@ -108,7 +105,7 @@ export function NodeGraph({
     el.addEventListener("touchend", schedule);
 
     const applyViewOffset = () => {
-      const camera = g.camera() as THREE.PerspectiveCamera;
+      const camera = graph.camera() as THREE.PerspectiveCamera;
       const w = el.clientWidth, h = el.clientHeight;
       if (!camera?.setViewOffset || w === 0 || h === 0) return;
       if (sidebarWidth > 0) camera.setViewOffset(w, h, -sidebarWidth / 2, 0, w, h);
@@ -116,28 +113,36 @@ export function NodeGraph({
     applyViewOffset();
 
     const ro = new ResizeObserver(() => {
-      g.width(el.clientWidth).height(el.clientHeight);
+      graph.width(el.clientWidth).height(el.clientHeight);
       applyViewOffset();
     });
     ro.observe(el);
 
     const tick = () => {
-      applySceneRotation(g);
-      applyLabelAnchor(g);
+      applySceneRotation(graph);
+      applyLabelAnchor(graph);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
 
-    function applySceneRotation(g: Loose) {
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (resume) clearTimeout(resume);
+      ro.disconnect();
+      el.removeEventListener("mousedown", pause);
+      el.removeEventListener("mouseup", schedule);
+      graph._destructor();
+      graphRef.current = null;
+    };
+
+    function applySceneRotation(g: Graph) {
       const scene = g.scene();
       if (!scene) return;
-      if (rotatingRef.current) angleRef.current += 0.002;
+      if (rotatingRef.current) angleRef.current += ROTATION_STEP_RAD;
       let tx = 0, ty = 0, tz = 0;
       const focusId = focusRef.current;
       if (focusId) {
-        const focused = g.graphData().nodes.find(
-          (n) => (n as { id?: string }).id === focusId,
-        ) as { x?: number; y?: number; z?: number } | undefined;
+        const focused = g.graphData().nodes.find((n) => n.id === focusId);
         if (focused) {
           tx = focused.x ?? 0; ty = focused.y ?? 0; tz = focused.z ?? 0;
         }
@@ -155,7 +160,7 @@ export function NodeGraph({
     // the sprite on the camera's right in world space. Result: a
     // readable badge at a constant offset no matter which side of
     // the node the camera is on.
-    function applyLabelAnchor(g: Loose) {
+    function applyLabelAnchor(g: Graph) {
       const camera = g.camera();
       const scene = g.scene();
       if (!camera || !scene) return;
@@ -169,8 +174,8 @@ export function NodeGraph({
         .invert();
       const localRight = camRight.clone().applyMatrix4(sceneInverse);
 
-      for (const raw of g.graphData().nodes) {
-        const obj = (raw as { __threeObj?: THREE.Group }).__threeObj;
+      for (const n of g.graphData().nodes) {
+        const obj = n.__threeObj;
         if (!obj) continue;
         for (const child of obj.children) {
           const offset = (child.userData as { labelOffset?: number }).labelOffset;
@@ -183,16 +188,6 @@ export function NodeGraph({
         }
       }
     }
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      if (resume) clearTimeout(resume);
-      ro.disconnect();
-      el.removeEventListener("mousedown", pause);
-      el.removeEventListener("mouseup", schedule);
-      g._destructor?.();
-      graphRef.current = null;
-    };
   }, [sidebarWidth]);
 
   // Feed graph data, awaiting document.fonts.ready every time so the
@@ -213,7 +208,7 @@ export function NodeGraph({
   useEffect(() => {
     focusRef.current = focusNodeId;
     angleRef.current = 0;
-    graphRef.current?.cameraPosition(CAMERA_POS, { x: 0, y: 0, z: 0 }, 0);
+    graphRef.current?.cameraPosition(CAMERA_POS, LOOK_AT, 0);
   }, [focusNodeId]);
 
   return <div ref={containerRef} className="w-full h-full" />;

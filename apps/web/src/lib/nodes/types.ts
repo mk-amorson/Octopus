@@ -61,10 +61,18 @@ export type TriggerContext = {
 /** Returned by start() — call to tear the trigger down. */
 export type StopFn = () => void | Promise<void>;
 
-// PublicDef consumers need a non-optional category in the serialised
-// shape, but we keep it mandatory on the definition too — every node
-// type must belong to a category.
-export type NodeDefinition<TConfig = Record<string, unknown>> = {
+export type NodeConfig = Record<string, unknown>;
+
+// One non-generic shape for every node definition. A previous version
+// parameterised this on TConfig, which forced every call-site in the
+// manager + registry to cast through `unknown` (TypeScript functions
+// are contravariant in their argument types, so narrower configs don't
+// survive heterogeneous arrays). The runtime already persists config
+// as NodeConfig end-to-end — it reads JSON, validates per-field on
+// save, and hands the same object back to start(). Authors of a new
+// node type narrow the shape internally in their start() body, where
+// they already know which keys they own.
+export type NodeDefinition = {
   /** Dotted identifier, e.g. `telegram.trigger`. Stable — used as the
    *  discriminator in persisted config and in the registry. */
   id: string;
@@ -98,18 +106,14 @@ export type NodeDefinition<TConfig = Record<string, unknown>> = {
    */
   inputs?: string[];
   outputs?: string[];
-  /**
-   * Build a config form's default values from nothing — used when a
-   * new node instance is created. Returning an empty object is fine;
-   * defined explicitly so TypeScript knows the config shape.
-   */
-  defaults: () => TConfig;
+  /** Zero-state for a freshly-created instance. Empty object is fine. */
+  defaults: () => NodeConfig;
   /**
    * Activate the trigger. Return a stop function the runtime will call
    * on disable / config change / shutdown. For action nodes that don't
    * own a long-running resource, return a no-op.
    */
-  start: (cfg: TConfig, ctx: TriggerContext) => Promise<StopFn>;
+  start: (cfg: NodeConfig, ctx: TriggerContext) => Promise<StopFn>;
 };
 
 /** Persisted shape. `config` may contain ciphertext for `secret: true`
@@ -119,6 +123,6 @@ export type NodeInstance = {
   type: string; // NodeDefinition.id
   name: string;
   enabled: boolean;
-  config: Record<string, unknown>;
+  config: NodeConfig;
   createdAt: number;
 };

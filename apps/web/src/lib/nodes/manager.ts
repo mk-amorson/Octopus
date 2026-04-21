@@ -21,13 +21,21 @@ type Active = {
   type: string;
 };
 
-const GLOBAL_KEY = Symbol.for("octopus.nodes.manager");
 type GlobalCache = { started: boolean; active: Map<string, Active> };
 
+// Stash the singleton on a prefixed key of globalThis so Next's HMR
+// doesn't build a fresh manager on every file save. Accessed via a
+// single-step intersection assertion — no `unknown` hop, no
+// `declare global { var … }` (which would force `eslint-disable
+// no-var`). The optional field means assignability is unconditional.
+type CacheGlobals = typeof globalThis & { __octopusNodeManager?: GlobalCache };
+
 function cache(): GlobalCache {
-  const g = globalThis as unknown as Record<symbol, GlobalCache | undefined>;
-  if (!g[GLOBAL_KEY]) g[GLOBAL_KEY] = { started: false, active: new Map() };
-  return g[GLOBAL_KEY]!;
+  const g = globalThis as CacheGlobals;
+  if (!g.__octopusNodeManager) {
+    g.__octopusNodeManager = { started: false, active: new Map() };
+  }
+  return g.__octopusNodeManager;
 }
 
 function ctxFor(instance: NodeInstance): TriggerContext {
@@ -67,7 +75,7 @@ export const manager = {
       return;
     }
     try {
-      const stop = await def.start(instance.config as never, ctxFor(instance));
+      const stop = await def.start(instance.config, ctxFor(instance));
       c.active.set(nodeId, { stop, type: instance.type });
     } catch (err) {
       appendTrace(nodeId, "error", `start failed: ${(err as Error).message}`);

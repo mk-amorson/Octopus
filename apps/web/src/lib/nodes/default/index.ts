@@ -6,7 +6,7 @@
 
 import type { NodeDefinition } from "../types";
 
-export const defaultNode: NodeDefinition<Record<string, never>> = {
+export const defaultNode: NodeDefinition = {
   id: "node.default",
   name: "Octopus Hub",
   category: "Platform",
