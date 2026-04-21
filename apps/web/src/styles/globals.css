@@ -30,3 +30,14 @@ body {
   font-smooth: never;
   image-rendering: pixelated;
 }
+
+/* TokenGate input: placeholder colour comes from a CSS custom
+   property the React component sets per status; hide it on focus
+   so it doesn't sit on top of the caret. */
+.token-gate-input::placeholder {
+  color: var(--placeholder-color, #ffffff66);
+  opacity: 1;
+}
+.token-gate-input:focus::placeholder {
+  color: transparent;
+}
