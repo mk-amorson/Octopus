@@ -12,18 +12,14 @@ import { COOKIE_NAME } from "@/lib/auth/config";
 import { verify } from "@/lib/auth/session";
 
 const LOGIN_PATH = "/login";
-const API_LOGIN = "/api/auth/login";
-const API_LOGOUT = "/api/auth/logout";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // The login POST and logout POST are the two endpoints that are
-  // reachable without a session — everything else (including every
-  // future API route) is gated.
-  if (pathname === API_LOGIN || pathname === API_LOGOUT) {
-    return NextResponse.next();
-  }
+  // The matcher below already excludes `/api/auth/*` from middleware
+  // entirely, so the login/logout endpoints stay reachable without a
+  // session cookie. Everything else that reaches this function is
+  // gated.
 
   const cookie = req.cookies.get(COOKIE_NAME)?.value;
   const authed = await verify(cookie);
@@ -51,7 +47,16 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Exclude Next's own asset pipeline and common static files. Every
-  // page and API route stays gated.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|fonts/).*)"],
+  // Two entries on purpose:
+  //   - "/"  matches the bare root. A single `/((?!…).*)` pattern does
+  //          NOT match the root once Next prepends basePath: the
+  //          generated regex becomes `^/<basePath>(?:/((?!…).*))…` and
+  //          the non-optional `/` after basePath fails on the naked
+  //          root, so middleware silently skipped it and served the
+  //          cached static dashboard to every visitor regardless of
+  //          their cookie. Explicitly listing "/" is the fix.
+  //   - the second pattern covers every non-root path, minus Next's
+  //     own asset pipeline and the auth endpoints (so they're always
+  //     reachable without a session cookie).
+  matcher: ["/", "/((?!_next|favicon.ico|fonts|api/auth).+)"],
 };

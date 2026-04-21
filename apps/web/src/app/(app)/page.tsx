@@ -7,6 +7,16 @@
 import { Logo } from "@/components/Logo";
 import { LogoutButton } from "@/components/LogoutButton";
 
+// Mark the dashboard fully dynamic so Next.js doesn't bake it into the
+// Full Route Cache with a year-long `s-maxage` header. That cache is
+// harmless locally (middleware still runs in front of it) but would be
+// a session-leak waiting to happen the moment anything cacheable —
+// Caddy with a cache directive, a CDN, a corporate proxy — sits
+// between the container and the user: the authenticated HTML could be
+// handed out to the next visitor before middleware got a chance to
+// redirect them.
+export const dynamic = "force-dynamic";
+
 const version = process.env["NEXT_PUBLIC_OCTOPUS_VERSION"] ?? "";
 
 export default function HomePage() {
