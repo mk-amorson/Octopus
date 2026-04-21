@@ -13,10 +13,10 @@ import { useState, useRef, useEffect } from "react";
 
 const TOKEN_LENGTH = 64;
 
-// Width matches the trimmed render of "Octopus" (LOGO_EM_WIDTH minus
-// the 1em horizontal padding cushion) so the gate lines up exactly
-// under the logo at any viewport.
-const LOGO_TRIMMED_EM = 2.8125;
+// Width matches the VISIBLE render of "Octopus" — from the first
+// pixel of "O" to the last pixel of "s". Same 2.9375em the Logo
+// component trims itself to via `margin-right: -0.125em`.
+const LOGO_TRIMMED_EM = 2.9375;
 
 // Tight gap between the logo's "p" descender and the gate's top
 // edge — about two logo-pixels.

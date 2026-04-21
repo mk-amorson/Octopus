@@ -21,16 +21,27 @@
 import type { CSSProperties } from "react";
 
 // Advance widths of the individual glyphs in the octopus-pixel font,
-// in font-units (UPM = 1024). Sum them up, subtract the right tail on
-// the final "s" that we visually trim with margin-right, divide by UPM
-// to get em. Then add 1em for the side padding (8 font-pixels each).
+// in font-units (UPM = 1024). We want the LOGO box to be exactly as
+// wide as the VISIBLE pixels of "Octopus" — from the first pixel of
+// "O" to the last pixel of "s" — plus a consistent cushion on each
+// side.
 //
-//   O=512 + c=448 + t=384 + o=448 + p=448 + u=448 + s=448 = 3136
-//   -128 (s's right tail trimmed via margin-right: -0.125em) = 3008
-//   3008 / 1024 = 2.9375em of rendered text (pre-trim)
-//   -0.125em trim = 2.8125em
-//   +1em of horizontal padding (0.5em each side = 8 font-pixels) = 3.8125em
-const LOGO_EM_WIDTH = 3.8125;
+//   advances: O=512 + c=448 + t=384 + o=448 + p=448 + u=448 + s=448 = 3136
+//   Sum of advances is the inline width INCLUDING each glyph's
+//   right-side "tail" (invisible space after the last pixel). The
+//   tail on every letter is 2 pixels = 128 units; only the final
+//   "s"'s tail matters for the outer box, since each intermediate
+//   tail is consumed as the gap before the next letter.
+//
+//   To trim that final tail we apply `margin-right: -0.125em` to
+//   the h1, so the container's right edge lands on the last visible
+//   pixel of "s":
+//     3136 − 128 = 3008 units = 2.9375em of visible text.
+//
+//   Add a half-em of padding on each side (8 font-pixels — one em
+//   total) and the overall box is 3.9375em.
+const LOGO_VISIBLE_EM = 2.9375;
+const LOGO_EM_WIDTH = LOGO_VISIBLE_EM + 1;
 
 // Default: make LOGO_EM_WIDTH (including padding) match the short edge
 // of the viewport. Subtracting env(safe-area-inset-*) would be the next
