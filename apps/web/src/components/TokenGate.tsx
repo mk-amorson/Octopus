@@ -78,13 +78,22 @@ export function TokenGate() {
   }, [status]);
 
   function handleChange(raw: string) {
-    if (status === "ok" || status === "bad") setStatus("idle");
-    if (status === "checking") return;
+    // Treat any keystroke after a "bad" result as the start of a
+    // retry. Successful results are locked (see pointerEvents on
+    // the input below) so this branch never fires for them.
+    if (status === "bad") setStatus("idle");
+    if (status === "checking" || status === "ok") return;
     const next = raw.slice(0, TOKEN_LENGTH);
     setValue(next);
     if (next.length === TOKEN_LENGTH) {
       void verify(next);
     }
+  }
+
+  // Click/focus on a "bad" input is also a retry signal: clear the
+  // result colour without requiring the user to type first.
+  function handleRetry() {
+    if (status === "bad") setStatus("idle");
   }
 
   async function verify(token: string) {
@@ -129,6 +138,10 @@ export function TokenGate() {
     lineHeight: 1.5,
     boxSizing: "border-box",
     transition: "border-color 200ms ease, color 200ms ease",
+    // ok = success: the user is done, nothing more to type. Block
+    // pointer events so a stray tap doesn't drop us back to idle.
+    pointerEvents: status === "ok" ? "none" : "auto",
+    cursor: status === "ok" ? "default" : "text",
   };
 
   const overlayStyle: CSSProperties = {
@@ -136,7 +149,11 @@ export function TokenGate() {
     inset: 0,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    // Left-align so "success" / "wrong token" / "checking..." render
+    // exactly where the "enter token" placeholder sat — same left
+    // padding as the input itself, both expressed in the same em.
+    justifyContent: "flex-start",
+    paddingLeft: "0.5em",
     color: OVERLAY_COLOR[status],
     fontSize: `${INNER_FONT_EM}em`,
     lineHeight: 1.5,
@@ -149,8 +166,10 @@ export function TokenGate() {
         type="text"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
+        onFocus={handleRetry}
+        onClick={handleRetry}
         placeholder={status === "idle" ? "enter token" : ""}
-        readOnly={status === "checking"}
+        readOnly={status === "checking" || status === "ok"}
         autoComplete="off"
         spellCheck={false}
         autoCapitalize="none"
