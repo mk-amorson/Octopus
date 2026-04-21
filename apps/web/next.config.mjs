@@ -17,6 +17,10 @@ const nextConfig = {
     // Point file tracing at the workspace root so standalone output includes
     // the correct slice of the monorepo node_modules.
     outputFileTracingRoot: path.join(__dirname, "../.."),
+    // Enables src/instrumentation.ts — we bootstrap the NodeManager
+    // on server boot from there so triggers are live before the first
+    // HTTP request arrives.
+    instrumentationHook: true,
   },
 };
 

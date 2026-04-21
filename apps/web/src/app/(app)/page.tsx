@@ -1,22 +1,29 @@
-// / — authenticated dashboard. Middleware gates it behind a valid
-// session cookie, so everything below assumes the visitor is logged
-// in. Intentionally empty content area for now — the AppShell draws
-// the sidebar / burger / logout, and real features will grow into
-// the <main> slot below as they arrive.
+// / — the authenticated landing. Empty state: tells the user to pick
+// a node in the sidebar or create one. Once a node exists and the
+// user navigates into it, the individual node route owns the main
+// area and this file doesn't render.
 
-import { AppShell } from "@/components/AppShell";
+import Link from "next/link";
 
-// Mark fully dynamic so Next never bakes this route into the Full
-// Route Cache with a year-long `s-maxage` header. Middleware still
-// runs for static routes, but the response body can leak to the next
-// visitor through any intermediate cache. Belt and suspenders.
 export const dynamic = "force-dynamic";
 
 export default function HomePage() {
   return (
-    <AppShell>
-      {/* Intentionally empty — real dashboard widgets land here. */}
-      <div className="h-full" />
-    </AppShell>
+    <div className="h-full flex items-center justify-center p-8">
+      <div className="max-w-md text-center space-y-4">
+        <h1 className="font-pixel text-2xl text-white/90">welcome</h1>
+        <p className="text-white/60 text-sm leading-relaxed">
+          Pick a node from the sidebar, or add a new one. First up: the
+          Telegram trigger — paste a bot token and watch messages arrive in
+          real time.
+        </p>
+        <Link
+          href="/nodes/new"
+          className="inline-block font-pixel text-sm text-white/90 hover:text-white border border-white/30 hover:border-white/60 px-4 py-2 transition-colors"
+        >
+          + add a node
+        </Link>
+      </div>
+    </div>
   );
 }

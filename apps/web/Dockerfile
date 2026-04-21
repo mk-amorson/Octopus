@@ -58,6 +58,12 @@ COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/public ./apps/web/public
 
+# Pre-create the data dir with nextjs ownership so the named volume
+# mounted at this path (see docker-compose.octopus.yml) inherits the
+# non-root uid. Otherwise the first `writeFileSync` from the app
+# fails with EACCES on fresh installs.
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+
 USER nextjs
 EXPOSE 3000
 

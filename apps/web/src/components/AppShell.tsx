@@ -1,30 +1,34 @@
 "use client";
 
-// AppShell is the chrome around every authenticated page: persistent
-// sidebar on desktop, slide-in drawer on mobile with a burger trigger.
-// The layout is a two-column flex; the sidebar is `fixed + transform`
-// below the md breakpoint and `static` above it, which is enough to
-// switch between "drawer" and "shelf" behaviour with one CSS class.
-//
-// Nav items live in `NAV` below — empty for now, since there's only
-// one authenticated route, but structured so adding "Settings" or
-// "Logs" is a one-line append.
+// Chrome around every authenticated page: persistent sidebar on
+// desktop, slide-in drawer on mobile with a burger trigger. Server
+// layout passes down a `categories` tree already grouped by node
+// category with each category's node types + user-created instances.
+// Rendering is straightforward: one <section> per category, instance
+// list inside it, "+ Add" row underneath.
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { LogoutButton } from "./LogoutButton";
+import type { SidebarCategory } from "@/lib/nodes/sidebar";
 
-type NavEntry = { label: string; href: string };
-
-// Intentionally empty until there's a second authenticated route to
-// link to. Adding an entry here is enough — the sidebar reads NAV and
-// renders everything uniformly.
-const NAV: NavEntry[] = [];
-
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  categories,
+  children,
+}: {
+  categories: SidebarCategory[];
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
-  // Close the drawer on Escape; standard keyboard affordance so a
-  // user who opened it on mobile isn't trapped without a pointer.
+  // Close the drawer on navigation — standard mobile affordance.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // And on Escape.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -36,10 +40,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-dvh text-white">
-      {/* Burger — mobile only. Fixed so it sits on top of the main
-          content when the drawer is closed, and hidden once the
-          drawer itself is open (the drawer has its own close
-          affordance + the overlay catches clicks). */}
       {!open && (
         <button
           type="button"
@@ -51,8 +51,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
       )}
 
-      {/* Backdrop — mobile only, visible only while drawer is open.
-          Tap-outside-to-close is the expected mobile pattern. */}
       {open && (
         <div
           className="md:hidden fixed inset-0 bg-black/60 z-30"
@@ -63,23 +61,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside
         className={[
-          "z-40 flex flex-col w-60 bg-black border-r border-white/15",
-          // Mobile: fixed drawer, slides in from the left.
+          "z-40 flex flex-col w-64 bg-black border-r border-white/15",
           "fixed inset-y-0 left-0 transform transition-transform duration-200 ease-out",
           open ? "translate-x-0" : "-translate-x-full",
-          // Desktop: static column, always visible, no transform.
           "md:static md:translate-x-0 md:transition-none",
         ].join(" ")}
         aria-label="Primary"
       >
-        {/* Header row: wordmark + close button on mobile. Keeping
-            the brand subtle here (tiny pixel-font label) instead of
-            the full centred Logo, because the main content area is
-            the hero now — not the sidebar. */}
         <div className="flex items-center justify-between h-12 px-4 border-b border-white/10">
-          <span className="font-pixel text-sm tracking-tight text-white/80">
+          <Link
+            href="/"
+            className="font-pixel text-sm tracking-tight text-white/80 hover:text-white"
+          >
             octopus
-          </span>
+          </Link>
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -91,21 +86,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2">
-          {NAV.length === 0 ? null : (
-            <ul className="flex flex-col">
-              {NAV.map((item) => (
-                <li key={item.href}>
-                  <a
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    className="block px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
-                  >
-                    {item.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
+          {categories.map((cat) => (
+            <CategorySection key={cat.category} cat={cat} activePath={pathname} />
+          ))}
         </nav>
 
         <div className="border-t border-white/10 p-2">
@@ -116,6 +99,70 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
   );
+}
+
+function CategorySection({
+  cat,
+  activePath,
+}: {
+  cat: SidebarCategory;
+  activePath: string;
+}) {
+  // When a category offers more than one type we hand off to /nodes/new
+  // so the user can pick; with exactly one type the "Add" link skips
+  // the catalogue and points straight at the creation form.
+  const addHref =
+    cat.types.length === 1
+      ? `/nodes/new?type=${encodeURIComponent(cat.types[0]!.id)}`
+      : `/nodes/new?category=${encodeURIComponent(cat.category)}`;
+
+  return (
+    <section className="mb-4">
+      <h3 className="px-4 py-1 text-[10px] uppercase tracking-wider text-white/40">
+        {cat.category}
+      </h3>
+      <ul>
+        {cat.nodes.map((n) => {
+          const href = `/nodes/${n.id}`;
+          const active = activePath === href;
+          return (
+            <li key={n.id}>
+              <Link
+                href={href}
+                className={[
+                  "flex items-center justify-between px-4 py-1.5 text-sm transition-colors",
+                  active
+                    ? "bg-white/10 text-white"
+                    : "text-white/70 hover:bg-white/5 hover:text-white",
+                ].join(" ")}
+              >
+                <span className="truncate">{n.name}</span>
+                <StatusDot running={n.running} enabled={n.enabled} />
+              </Link>
+            </li>
+          );
+        })}
+        <li>
+          <Link
+            href={addHref}
+            className="block px-4 py-1.5 text-sm text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            + add
+          </Link>
+        </li>
+      </ul>
+    </section>
+  );
+}
+
+function StatusDot({ running, enabled }: { running: boolean; enabled: boolean }) {
+  const color = running
+    ? "bg-emerald-400"
+    : enabled
+      ? "bg-amber-400"
+      : "bg-white/20";
+  const title = running ? "running" : enabled ? "enabled (not running)" : "disabled";
+  return <span className={`w-1.5 h-1.5 rounded-full ${color}`} title={title} />;
 }
 
 function BurgerIcon() {
