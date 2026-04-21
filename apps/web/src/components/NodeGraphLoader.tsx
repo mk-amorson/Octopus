@@ -13,7 +13,7 @@ const NodeGraph = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-full grid place-items-center text-white/30 text-sm font-pixel">
+      <div className="w-full h-full grid place-items-center text-white/30 text-sm">
         loading graph…
       </div>
     ),

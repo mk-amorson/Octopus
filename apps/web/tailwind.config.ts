@@ -1,16 +1,20 @@
 import type { Config } from "tailwindcss";
 
+// Single source of truth for the typeface: every Tailwind font-family
+// alias resolves to the same octopus-pixel stack. `var(--font-
+// octopus-pixel)` is exposed by next/font/local in layout.tsx;
+// `ui-monospace` is the fallback while that variable hasn't
+// hydrated yet.
+const PIXEL_STACK = ["var(--font-octopus-pixel)", "ui-monospace", "monospace"];
+
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       fontFamily: {
-        sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Inter", "sans-serif"],
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
-        // Our stylised pixel font — proportional letters with a fixed
-        // 1-pixel gap, monospace digits. Load order in layout.tsx exposes
-        // it as the --font-octopus-pixel CSS var.
-        pixel: ["var(--font-octopus-pixel)", "ui-monospace", "monospace"],
+        sans: PIXEL_STACK,
+        mono: PIXEL_STACK,
+        pixel: PIXEL_STACK,
       },
     },
   },

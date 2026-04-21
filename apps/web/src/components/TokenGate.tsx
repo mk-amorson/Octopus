@@ -129,9 +129,7 @@ export function TokenGate() {
 
   return (
     <div
-      // font-pixel pins the whole gate to octopus-pixel; without it
-      // the tree falls back to sans.
-      className="token-gate font-pixel"
+      className="token-gate"
       data-status={status}
       onClick={status === "bad" || status === "throttled" ? retry : undefined}
       // Instance-level overrides only. Deliberately no fontSize here

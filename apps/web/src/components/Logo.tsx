@@ -74,7 +74,7 @@ export function Logo({ version, size, className, style }: LogoProps) {
       style={{ fontSize, ...style }}
     >
       <h1
-        className="font-pixel text-white"
+        className="text-white"
         // Order matters: `margin` is a shorthand that resets every
         // side, so it has to go BEFORE the specific `marginRight`
         // override. Flipping the order is what broke right-edge
@@ -92,7 +92,7 @@ export function Logo({ version, size, className, style }: LogoProps) {
       </h1>
       {version ? (
         <p
-          className="font-pixel text-white/50"
+          className="text-white/50"
           style={{
             position: "absolute",
             bottom: 0,

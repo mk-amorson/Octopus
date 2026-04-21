@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex items-center justify-between h-12 px-4 border-b border-white/10">
           <Link
             href="/"
-            className="font-pixel text-sm tracking-tight text-white/80 hover:text-white"
+            className="text-sm tracking-tight text-white/80 hover:text-white"
           >
             octopus
           </Link>

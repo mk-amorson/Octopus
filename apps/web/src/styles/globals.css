@@ -17,14 +17,12 @@ body {
   height: 100dvh;
   margin: 0;
   overflow: hidden;
-}
-
-body {
+  /* Octopus-pixel everywhere. Every Tailwind font-family alias
+     resolves to this same stack (see tailwind.config.ts), and the
+     smoothing-off + pixelated rendering lives on <body> so every
+     descendant inherits it without having to sprinkle .font-pixel
+     across components. */
   font-family: theme("fontFamily.sans");
-}
-
-/* octopus-pixel is a pixel font — keep edges crisp, don't smooth them. */
-.font-pixel {
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
   font-smooth: never;
