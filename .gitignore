@@ -1,6 +1,14 @@
 node_modules/
 .pnpm-store/
 
+# AI tooling
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.aider*
+AGENTS.md
+
 # build output
 .next/
 dist/
