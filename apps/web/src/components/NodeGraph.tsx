@@ -150,9 +150,9 @@ export function NodeGraph({ nodes, links }: Props) {
       .cameraPosition({ x: 0, y: 0, z: 120 });
 
     // The library accepts any object; we carry our own discriminator
-     // fields on the NodeObject superset.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (graph as any).graphData({ nodes, links });
+    // fields on the NodeObject superset.
+    (graph as unknown as { graphData: (d: { nodes: unknown[]; links: unknown[] }) => void })
+      .graphData({ nodes, links });
 
     // Gentle auto-rotate of the camera around the scene centre. Pauses
     // on user interaction so it doesn't fight the mouse.
@@ -191,10 +191,9 @@ export function NodeGraph({ nodes, links }: Props) {
       ro.disconnect();
       if (resumeTimer) clearTimeout(resumeTimer);
       // _destructor isn't on the typings but the library exposes it;
-       // calling it tears down the WebGL context so navigation doesn't
-       // leak GPU resources.
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (graph as any)._destructor?.();
+      // calling it tears down the WebGL context so navigation doesn't
+      // leak GPU resources.
+      (graph as unknown as { _destructor?: () => void })._destructor?.();
       graphRef.current = null;
     };
     // Intentionally re-build the whole graph when data changes — nodes
