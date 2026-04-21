@@ -14,9 +14,15 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import ForceGraph3D, { type ForceGraph3DInstance } from "3d-force-graph";
+import ForceGraph3D from "3d-force-graph";
 import * as THREE from "three";
 import SpriteText from "three-spritetext";
+
+// 3d-force-graph@1.76 ships as a class, not a factory: the instance
+// is `new ForceGraph3D(el)`. We keep the type loose — its public
+// surface is fluent chainable methods and the generated d.ts is
+// generic over NodeObject/LinkObject in a way we don't need here.
+type GraphInstance = InstanceType<typeof ForceGraph3D>;
 
 export type GraphNode = {
   id: string;
@@ -71,7 +77,7 @@ function geometryFor(n: GraphNode): THREE.BufferGeometry {
 
 export function NodeGraph({ nodes, links }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<ForceGraph3DInstance | null>(null);
+  const graphRef = useRef<GraphInstance | null>(null);
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
@@ -80,7 +86,7 @@ export function NodeGraph({ nodes, links }: Props) {
     if (!containerRef.current) return;
     const el = containerRef.current;
 
-    const graph = ForceGraph3D()(el)
+    const graph = new ForceGraph3D(el)
       .backgroundColor("#000000")
       .showNavInfo(false)
       .nodeThreeObject((raw) => {
@@ -143,7 +149,10 @@ export function NodeGraph({ nodes, links }: Props) {
       })
       .cameraPosition({ x: 0, y: 0, z: 120 });
 
-    graph.graphData({ nodes: nodes as unknown as Parameters<typeof graph.graphData>[0]["nodes"], links: links as unknown as Parameters<typeof graph.graphData>[0]["links"] });
+    // The library accepts any object; we carry our own discriminator
+     // fields on the NodeObject superset.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (graph as any).graphData({ nodes, links });
 
     // Gentle auto-rotate of the camera around the scene centre. Pauses
     // on user interaction so it doesn't fight the mouse.
@@ -181,7 +190,11 @@ export function NodeGraph({ nodes, links }: Props) {
     return () => {
       ro.disconnect();
       if (resumeTimer) clearTimeout(resumeTimer);
-      graph._destructor?.();
+      // _destructor isn't on the typings but the library exposes it;
+       // calling it tears down the WebGL context so navigation doesn't
+       // leak GPU resources.
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (graph as any)._destructor?.();
       graphRef.current = null;
     };
     // Intentionally re-build the whole graph when data changes — nodes
