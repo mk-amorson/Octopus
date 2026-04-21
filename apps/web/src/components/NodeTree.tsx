@@ -46,13 +46,13 @@ export function NodeTree() {
             <button
               type="button"
               onClick={() => toggleCategory(group.category)}
-              className="w-full flex items-center gap-2 pl-3 pr-3 py-2 hover:bg-white/5 transition-colors text-left"
+              className="w-full flex items-center gap-2 pl-3 pr-3 py-2.5 hover:bg-white/5 transition-colors text-left"
             >
               <Chevron open={open} />
-              <span className="text-white/60 text-[11px] uppercase tracking-wider flex-1">
+              <span className="text-white/60 text-[11px] md:text-xs lg:text-[13px] uppercase tracking-wider flex-1">
                 {group.category}
               </span>
-              <span className="text-white/30 text-[11px]">{group.nodes.length}</span>
+              <span className="text-white/30 text-[11px] md:text-xs lg:text-[13px]">{group.nodes.length}</span>
             </button>
             <div
               className={`overflow-hidden transition-[max-height] duration-200 ${

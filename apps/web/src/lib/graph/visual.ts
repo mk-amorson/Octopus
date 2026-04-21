@@ -50,10 +50,14 @@ export type NodeObjectOptions = {
 // Geometry radius per node role. One source of truth so the label
 // offset below reads the same number — the label sits at
 // `radius + LABEL_GAP` world units from the node centre, every time.
-const HUB_RADIUS = 6;
-const INSTANCE_RADIUS = 4;
-const ACTION_SIDE = 6; // cube side length
-const LABEL_GAP = 3;
+// Sizes are tuned against the camera distance in NodeGraph.tsx —
+// together they put the hub at ~60 screen-pixels diameter on a
+// 900-pixel-tall viewport with FOV 60°, a comfortable primary-
+// content weight without dominating the canvas.
+const HUB_RADIUS = 7;
+const INSTANCE_RADIUS = 5;
+const ACTION_SIDE = 8; // cube side length
+const LABEL_GAP = 4;
 
 // Grid overlay painted behind the (transparent) Three.js canvas.
 // Keeps the UI from looking like a black void and visually anchors
@@ -132,7 +136,11 @@ export function nodeObject(n: GraphNode, opts: NodeObjectOptions = {}): THREE.Ob
 
   const label = new SpriteText(n.label);
   label.color = "#ffffff";
-  label.textHeight = n.role === "hub" ? 3 : 2.2;
+  // World-space heights: with the camera in NodeGraph positioned so
+  // one world unit ~= 5 CSS pixels on a 900-pixel-tall viewport, the
+  // hub label lands at ~22 px and instances at ~17 px — comfortably
+  // readable without shouting.
+  label.textHeight = n.role === "hub" ? 4.5 : 3.4;
   // Anchor the sprite's origin at its LEFT-centre so the text grows
   // rightward from the placement point set by the rAF loop — never
   // overlaps the node, always starts cleanly at `labelOffset` units

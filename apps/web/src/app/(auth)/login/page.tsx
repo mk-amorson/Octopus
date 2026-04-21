@@ -4,7 +4,7 @@
 // the dashboard once the Set-Cookie from /api/auth/login lands.
 
 import { Suspense } from "react";
-import { Logo } from "@/components/Logo";
+import { Logo, LOGO_SIZE_CSS } from "@/components/Logo";
 import { TokenGate } from "@/components/TokenGate";
 
 // Middleware already makes every visit dynamic (it reads the cookie),
@@ -20,9 +20,12 @@ export default function LoginPage() {
     <main className="flex h-dvh items-center justify-center">
       <div
         className="inline-flex flex-col"
-        // The Logo drives its own font-size from 100vmin; we inherit
-        // that to keep the TokenGate sized in the same em frame.
-        style={{ fontSize: "calc(100vmin / 3.8125)" }}
+        // Share the Logo's font-size formula so both the wordmark and
+        // the TokenGate below (whose geometry is measured in em of
+        // this container) scale together — on mobile the whole stack
+        // fills the short viewport edge, on desktop it caps at a
+        // modest brand-mark size.
+        style={{ fontSize: LOGO_SIZE_CSS }}
       >
         <Logo version={version || undefined} size="inherit" />
         <Suspense fallback={null}>

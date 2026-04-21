@@ -35,9 +35,9 @@ export function NodeTile({ node, def, expanded, connections, onToggle }: Props) 
       <button
         type="button"
         onClick={onToggle}
-        className="w-full flex items-center gap-2 pl-9 pr-3 py-2 hover:bg-white/5 transition-colors text-left"
+        className="w-full flex items-center gap-2 pl-9 pr-3 py-2.5 hover:bg-white/5 transition-colors text-left"
       >
-        <span className="flex-1 text-sm text-white/80 truncate">{node.name}</span>
+        <span className="flex-1 text-sm md:text-[15px] lg:text-base text-white/80 truncate">{node.name}</span>
         <span
           className="w-1.5 h-1.5 rounded-full shrink-0"
           style={{ backgroundColor: status.color }}
@@ -51,8 +51,8 @@ export function NodeTile({ node, def, expanded, connections, onToggle }: Props) 
           expanded ? "max-h-[1000px]" : "max-h-0"
         }`}
       >
-        <div className="pl-9 pr-3 pb-3 flex flex-col gap-2">
-          <p className="text-[11px] text-white/50 leading-relaxed">{def.description}</p>
+        <div className="pl-9 pr-3 pb-3 flex flex-col gap-2.5">
+          <p className="text-[11px] md:text-xs lg:text-[13px] text-white/50 leading-relaxed">{def.description}</p>
           <Row label="inputs" items={def.inputs} prefix="←" />
           <Row label="outputs" items={def.outputs} prefix="→" />
           <Row label="connections" items={connections} prefix="·" />
@@ -65,11 +65,11 @@ export function NodeTile({ node, def, expanded, connections, onToggle }: Props) 
 function Row({ label, items, prefix }: { label: string; items: string[]; prefix: string }) {
   return (
     <section>
-      <p className="text-[10px] uppercase tracking-wider text-white/40">{label}</p>
+      <p className="text-[10px] md:text-[11px] lg:text-xs uppercase tracking-wider text-white/40">{label}</p>
       {items.length === 0 ? (
-        <p className="text-[11px] text-white/25">—</p>
+        <p className="text-[11px] md:text-xs lg:text-[13px] text-white/25">—</p>
       ) : (
-        <ul className="text-[11px] text-white/70 space-y-0.5">
+        <ul className="text-[11px] md:text-xs lg:text-[13px] text-white/70 space-y-0.5">
           {items.map((i) => (
             <li key={i} className="break-words">
               <span className="text-white/30 mr-1">{prefix}</span>

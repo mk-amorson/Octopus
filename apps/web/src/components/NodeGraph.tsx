@@ -23,7 +23,12 @@ type Props = {
 
 // Camera placement + tuning. All hardcoded timings/speeds live here
 // so a future polish pass has one knob per feel-axis.
-const CAMERA_POS = { x: 0, y: 50, z: 180 } as const;
+// z=150 (down from 180) pulls the scene closer: with three-forcegraph's
+// default 60° vertical FOV, the visible world-height becomes
+// 2·150·tan(30°) ≈ 173 world units, i.e. each unit maps to ~5 CSS px
+// on a 900-pixel-tall viewport. Combined with the radii in visual.ts
+// that lands the hub at ~70 px diameter — a primary-content weight.
+const CAMERA_POS = { x: 0, y: 50, z: 150 } as const;
 const LOOK_AT = { x: 0, y: 0, z: 0 } as const;
 const BACKGROUND_TRANSPARENT = "rgba(0,0,0,0)";
 const LINK_COLOUR = "rgba(255,255,255,0.22)";

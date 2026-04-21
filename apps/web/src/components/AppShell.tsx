@@ -11,6 +11,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "./LogoutButton";
 import { NodeTree } from "./NodeTree";
+import { SIDEBAR_CLASS } from "@/lib/visual/sidebar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -48,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside
         className={[
-          "z-40 flex flex-col w-72 bg-black border-r border-white/10",
+          `z-40 flex flex-col ${SIDEBAR_CLASS} bg-black border-r border-white/10`,
           "fixed inset-y-0 left-0 transform transition-transform duration-200 ease-out",
           open ? "translate-x-0" : "-translate-x-full",
           "md:static md:translate-x-0 md:transition-none",
@@ -58,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex items-center justify-between h-12 px-4 border-b border-white/10">
           <Link
             href="/"
-            className="text-sm tracking-tight text-white/80 hover:text-white"
+            className="text-sm md:text-base tracking-tight text-white/80 hover:text-white"
           >
             octopus
           </Link>

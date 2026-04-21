@@ -1,6 +1,6 @@
 # Octopus — Status
 
-_Snapshot as of 2026-04-21 (v0.1.42)._
+_Snapshot as of 2026-04-21 (v0.1.43)._
 
 ## What this project is
 
@@ -15,13 +15,22 @@ Two products ship together under the same `vX.Y.Z` tag:
 - `apps/web` — the Next.js 14 App Router frontend users see.
 - `installer/` — the Go CLI (`octopus`) that manages the app's lifecycle.
 
-## Current release: v0.1.42
+## Current release: v0.1.43
 
-**Audit pass.** No user-visible change from v0.1.41 — the motion,
-the graph, the login all render identically. Underneath: every
-`as unknown as` cast except one library-boundary bridge is gone, the
-magic timings in the graph + token gate are named constants, and this
-doc is back in sync with the code.
+**Visual calibration.** The login wordmark was eating half the desktop
+viewport; the sidebar text sat at 11–14 px on every screen size and
+the 3D hub crept in at ~34 px; now the whole surface follows a single
+responsive type scale. Logo caps at 120 px on desktop (≈25 % viewport
+width), grows freely on phones. Sidebar expands 288 → 320 → 384 px at
+md/lg/xl with a matching bump in type (14 → 16 body, 11 → 13 meta),
+and the 3D camera pulls in so the hub reads at a primary-content size.
+One new module — `lib/visual/sidebar.ts` — owns the width breakpoint
+in one place so both the aside's Tailwind classes and the graph's
+camera-view offset read from the same source.
+
+**Audit pass (v0.1.42).** Every `as unknown as` cast except one library-
+boundary bridge is gone, the magic timings in the graph + token gate
+are named constants, and this doc is back in sync with the code.
 
 **The platform shell is live.** After the v0.1.24 auth+hardening pass the
 dashboard grew into the primary surface: a full-bleed 3D force graph with
@@ -241,6 +250,7 @@ installer/                (unchanged since v0.1.24)
 | v0.1.40 | 1px white frame around the canvas (reverted in v0.1.41) |
 | v0.1.41 | wireframe edges on node meshes |
 | v0.1.42 | audit cleanup — no visible change, type safety tightened |
+| v0.1.43 | visual calibration — logo cap, responsive sidebar, bigger hub |
 
 ## Gaps / known follow-ups
 

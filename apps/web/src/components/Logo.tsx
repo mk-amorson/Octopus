@@ -4,11 +4,13 @@
 //
 // Sizing
 // ------
-// The default size is `100vmin / LOGO_EM_WIDTH`, i.e. the whole
-// rendered-box (including an 8-font-pixel cushion on each side) fills
-// the short edge of the viewport. Because `vmin` picks the smaller of
-// width/height, rotating a phone between portrait and landscape doesn't
-// change the logo's visual size — exactly what we want.
+// The default size is `min(100vmin / LOGO_EM_WIDTH, LOGO_MAX_SIZE)`:
+// on mobile the logo box fills the short viewport edge (because `vmin`
+// picks the smaller of w/h, so the formula tracks portrait width and
+// landscape height); on tablets and desktops it caps at LOGO_MAX_SIZE
+// so a 4K monitor doesn't get a 700-pixel wordmark. Rotating a phone
+// between portrait and landscape doesn't change the logo's visual size
+// — exactly what we want.
 //
 // LOGO_EM_WIDTH comes from the octopus-pixel font geometry — it is
 // documented below, not magic. If you change the font or the padding
@@ -40,14 +42,24 @@ import type { CSSProperties } from "react";
 //
 //   Add a half-em of padding on each side (8 font-pixels — one em
 //   total) and the overall box is 3.9375em.
-const LOGO_VISIBLE_EM = 2.9375;
-const LOGO_EM_WIDTH = LOGO_VISIBLE_EM + 1;
+export const LOGO_VISIBLE_EM = 2.9375;
+export const LOGO_EM_WIDTH = LOGO_VISIBLE_EM + 1;
 
-// Default: make LOGO_EM_WIDTH (including padding) match the short edge
-// of the viewport. Subtracting env(safe-area-inset-*) would be the next
-// refinement if iPhone notches ever clip something — for now 100vmin
-// stays clean.
-const DEFAULT_SIZE = `calc(100vmin / ${LOGO_EM_WIDTH})`;
+// Cap the auto-sized font-size above this threshold so on tablets and
+// desktops the wordmark is a modest brand mark (~20–25% of viewport
+// width), not a hero block taking half the screen. On small phones
+// the viewport is narrower than the cap, so `min()` drops back to
+// the vmin-proportional value and the logo still fills the short edge.
+// 120px × LOGO_VISIBLE_EM = 352 px visible — sits in the sweet spot
+// between "readable" and "not shouting" across every breakpoint.
+export const LOGO_MAX_FONT_PX = 120;
+
+// Default: scale with vmin up to the cap, then hold. This is the one
+// formula both <Logo> itself and any container that inherits the
+// logo's font-size (e.g. the login page's TokenGate frame) should
+// use — exported as `LOGO_SIZE_CSS` so the two never drift.
+export const LOGO_SIZE_CSS =
+  `min(calc(100vmin / ${LOGO_EM_WIDTH}), ${LOGO_MAX_FONT_PX}px)`;
 
 // Version label sits at 1/5 of the logo's font size — close to what we
 // had at the previous hand-tuned `text-sm / md:text-base` pairing and
@@ -65,7 +77,7 @@ export type LogoProps = {
 };
 
 export function Logo({ version, size, className, style }: LogoProps) {
-  const fontSize = size ?? DEFAULT_SIZE;
+  const fontSize = size ?? LOGO_SIZE_CSS;
   return (
     <div
       className={`relative inline-block leading-[0.875] ${className ?? ""}`.trim()}
