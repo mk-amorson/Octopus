@@ -15,10 +15,16 @@ import { telegramTrigger } from "./telegram-trigger";
 // `NodeDefinition<any>` is the pragmatic escape hatch — every
 // call-site that actually runs a node casts the config to the node's
 // own shape at the last possible moment.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyDef = NodeDefinition<any>;
+type AnyDef = NodeDefinition<Record<string, unknown>>;
 
-const NODES: ReadonlyArray<AnyDef> = [telegramTrigger] as const;
+// The cast is necessary because TriggerContext / start() is
+// contravariant in TConfig: telegramTrigger's concrete Config type
+// doesn't widen to Record<string, unknown> on its own. Every runtime
+// call-site (manager.ts) passes the stored config back through as
+// an unknown-shaped record and that's what we actually see.
+const NODES: ReadonlyArray<AnyDef> = [
+  telegramTrigger as unknown as AnyDef,
+] as const;
 
 /**
  * Returns the registered node types. Wrapped in a function so tests

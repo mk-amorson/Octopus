@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
   const nodeId = params.id;
@@ -41,10 +41,7 @@ export async function GET(
         if (ev.nodeId === nodeId) send(ev);
       });
 
-      // @ts-expect-error — the abort signal isn't typed on the controller,
-      // but Next passes us one via the underlying request.
-      const abort = _req.signal as AbortSignal | undefined;
-      abort?.addEventListener("abort", () => {
+      req.signal.addEventListener("abort", () => {
         clearInterval(ka);
         unsub();
         try {

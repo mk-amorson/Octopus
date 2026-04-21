@@ -1,11 +1,13 @@
-// Next.js runs this once on server boot (in both dev and the
-// standalone production bundle) when `experimental.instrumentationHook`
-// is true. We use it to bootstrap the NodeManager — otherwise the
-// first API request would lazily start it, and any webhook that
-// arrived before the first page load would miss its trigger.
+// Next compiles this file for both the edge and the Node.js runtimes
+// (middleware lives in edge, route handlers in Node). To keep the
+// node-only node-manager bootstrap out of the edge bundle we put the
+// real work in a sibling `instrumentation.node.ts` and dynamic-import
+// it only when the runtime actually is Node. Webpack's static
+// analyser honours this exact pattern (see Next docs on
+// instrumentation).
 
 export async function register() {
-  if (process.env["NEXT_RUNTIME"] !== "nodejs") return;
-  const { manager } = await import("@/lib/nodes/manager");
-  await manager.bootstrap();
+  if (process.env["NEXT_RUNTIME"] === "nodejs") {
+    await import("./instrumentation.node");
+  }
 }
