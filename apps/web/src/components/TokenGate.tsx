@@ -35,13 +35,16 @@ export function TokenGate() {
   const [status, setStatus] = useState<Status>("idle");
 
   async function verify() {
-    if (!value || status === "checking") return;
+    // Trim so a stray newline or surrounding space from a terminal
+    // copy-paste doesn't false-fail the comparison.
+    const trimmed = value.trim();
+    if (!trimmed || status === "checking") return;
     setStatus("checking");
     try {
       const res = await fetch("/api/verify-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: value }),
+        body: JSON.stringify({ token: trimmed }),
       });
       if (res.ok) {
         setStatus("ok");

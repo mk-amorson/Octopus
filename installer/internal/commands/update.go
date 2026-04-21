@@ -7,6 +7,7 @@ import (
 	"github.com/mk-amorson/Octopus/installer/internal/source"
 	"github.com/mk-amorson/Octopus/installer/internal/stack"
 	"github.com/mk-amorson/Octopus/installer/internal/state"
+	"github.com/mk-amorson/Octopus/installer/internal/token"
 	"github.com/mk-amorson/Octopus/installer/internal/version"
 )
 
@@ -37,7 +38,7 @@ func Update() error {
 	fmt.Printf("cli:       %s\napp:       %s\nlatest:    %s\n",
 		version.Current, cfg.Version, latest)
 
-	if latest == version.Current && latest == cfg.Version {
+	if latest == version.Current && latest == cfg.Version && cfg.Token != "" {
 		fmt.Println("already on the latest version.")
 		return nil
 	}
@@ -64,6 +65,17 @@ func Update() error {
 	}
 	next := *cfg
 	next.Version = target
+	// A user updating from a pre-token release (<= v0.1.13) has an
+	// empty Config.Token. Mint one here so the rebuilt compose file
+	// carries a real OCTOPUS_TOKEN, not an empty string that would
+	// make every /api/verify-token call 401 for any input.
+	if next.Token == "" {
+		t, err := token.New()
+		if err != nil {
+			return fmt.Errorf("generate admin token: %w", err)
+		}
+		next.Token = t
+	}
 	if err := stack.Render(srcDir, next); err != nil {
 		return err
 	}
@@ -72,7 +84,9 @@ func Update() error {
 		return err
 	}
 	fmt.Println("==> restarting Octopus")
-	if err := stack.Up(srcDir); err != nil {
+	// --force-recreate so the container actually picks up env changes
+	// (new OCTOPUS_TOKEN on fresh upgrades, new version label, etc).
+	if err := stack.UpForce(srcDir); err != nil {
 		return err
 	}
 	if cfg.Version != target {
@@ -82,5 +96,10 @@ func Update() error {
 		return err
 	}
 	fmt.Printf("updated to %s. Serving at %s\n", target, next.URL())
+	if cfg.Token == "" {
+		// Surface the fresh token so the user can copy it straight
+		// out of the update output.
+		fmt.Printf("admin token (this install had none before): %s\n", next.Token)
+	}
 	return nil
 }

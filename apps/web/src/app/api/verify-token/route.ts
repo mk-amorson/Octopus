@@ -24,10 +24,10 @@ export async function POST(req: Request) {
   }
   const got =
     typeof body === "object" && body !== null && "token" in body
-      ? String((body as { token?: unknown }).token ?? "")
+      ? String((body as { token?: unknown }).token ?? "").trim()
       : "";
 
-  if (!expected || !got || !equalConstTime(got, expected)) {
+  if (!expected || !got || !equalConstTime(got, expected.trim())) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   return NextResponse.json({ ok: true });
