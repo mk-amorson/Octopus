@@ -1,6 +1,6 @@
 # Octopus — Status
 
-_Snapshot as of 2026-04-21 (v0.1.23)._
+_Snapshot as of 2026-04-21 (v0.1.24)._
 
 ## What this project is
 
@@ -15,83 +15,123 @@ Two products ship together under the same `vX.Y.Z` tag:
 - `apps/web` — the Next.js 14 App Router frontend users see.
 - `installer/` — the Go CLI (`octopus`) that manages the app's lifecycle.
 
-## Current release: v0.1.23
+## Current release: v0.1.24
 
-Active feature track is the **TokenGate**: a single-input admin gate shown
-under the logo on the landing page. The server holds the expected token in
-`OCTOPUS_TOKEN` (injected into the container by the installer) and
-compares it in constant time via `node:crypto.timingSafeEqual`. Client
-never sees the expected value.
+**Real session auth + hardening pass.** The login screen is no longer a
+decorative widget — a correct token now sets an httpOnly session cookie,
+middleware gates every route behind it, and the dashboard sits at `/`
+waiting to be built out.
 
-Recent releases (v0.1.14 → v0.1.23) have all been TokenGate iterations:
-mint-on-upgrade, base-path prefix fix, single-input redesign, em-scoped
-geometry, retry/success lock, overlay alignment, and pixel-width fixes.
+### Auth protocol (single source of truth)
+
+`apps/web/src/lib/auth/session.ts` is the one module that knows how a
+session is signed and verified:
+
+- Cookie: `octopus_session`, httpOnly, SameSite=Lax.
+- Value: `<b64url(iat)>.<b64url(HMAC-SHA256(iat, key=OCTOPUS_TOKEN))>`.
+- Max age: 30 days. Rotating the admin token (via `octopus token rotate`)
+  invalidates every outstanding session — no second secret to manage.
+- Verification uses Web Crypto, so the same function works in middleware
+  (edge runtime) and in route handlers (node runtime).
+
+### Request flow
+
+```
+  visitor ──▶ middleware.ts ──▶ cookie valid? ──▶ yes ──▶ page
+                  │                 │
+                  │                 └── no ───▶ 302 /login?redirect=<path>
+                  │
+                  └── /login with valid cookie ──▶ 302 /  (or ?redirect)
+```
+
+- `POST /api/auth/login`  — validates the token, issues the cookie.
+- `POST /api/auth/logout` — clears the cookie.
+- Everything else is gated.
+
+### Rate limiting
+
+In-memory sliding window on `/api/auth/login`
+(`lib/auth/rateLimit.ts`): **10 attempts per minute per client IP**,
+response `429` with `Retry-After`. Single-process-only by design —
+Octopus ships one container, one process.
 
 ## Repo layout
 
 ```
-apps/web/              Next.js 14 + React 18 + Tailwind
-  src/app/             App Router routes
-    api/verify-token/  Constant-time token check
-    page.tsx           Landing: <Logo> + <TokenGate>
-    layout.tsx         Loads octopus-pixel.ttf via next/font/local
-  src/components/      Logo, TokenGate
-  Dockerfile           Standalone Next build, bakes basePath + version
-docs/pages/            Bootstrap shims + landing, served via GitHub Pages
-  install              curl | sh shim (Linux/macOS)
-  install.ps1          iwr | iex shim (Windows)
-installer/             Go module, stdlib only (go.sum stays empty on purpose)
-  cmd/octopus/         Entry point
-  internal/commands/   install, lifecycle, update, uninstall, token
-  internal/{docker,caddy,source,selfupdate,stack,state,token,wizard,version}/
-.github/
-  workflows/tag.yml     Mobile-friendly "cut a tag" button → dispatches release
-  workflows/release.yml goreleaser: linux/darwin/windows × amd64/arm64
-  workflows/pages.yml   Publishes docs/pages/ to GitHub Pages
-  RELEASE_VERSION       Auto-release trigger file (v0.1.23)
+apps/web/
+  src/
+    app/
+      (app)/page.tsx            Dashboard at /   (gated)
+      (auth)/login/page.tsx     Login screen at /login
+      api/auth/
+        login/route.ts          Validate token, set cookie
+        logout/route.ts         Clear cookie
+      layout.tsx                Loads octopus-pixel.ttf
+    components/
+      Logo.tsx                  Reusable wordmark + version label
+      TokenGate.tsx             POSTs /api/auth/login, redirects on ok
+      LogoutButton.tsx          POSTs /api/auth/logout
+    lib/auth/
+      config.ts                 Cookie name, MAX_AGE, rate-limit budget,
+                                basePath-aware apiUrl()
+      session.ts                HMAC sign/verify (Web Crypto)
+      rateLimit.ts              Per-IP sliding window
+    middleware.ts               Single gate over every route
+  Dockerfile                    Standalone Next build
+  .eslintrc.json                Next core-web-vitals config (CI gate)
+
+docs/pages/
+  install                       curl | sh bootstrap (Linux/macOS)
+  install.ps1                   iwr | iex bootstrap (Windows)
+  index.html                    Landing for GitHub Pages
+
+installer/
+  cmd/octopus/                  Entry point
+  internal/
+    caddy/                      Marker-checked install/remove + .bak restore
+    commands/                   install, lifecycle, update, uninstall, token
+    docker/                     v2 plugin → v1 standalone fallback
+    source/                     tarball download, size-capped, path-safe
+    state/                      config.json with atomic rename
+    token/                      hex-encoded 32-byte secret
+    wizard/                     strict regex validation on domain + basePath
+    selfupdate/                 SHA256-verified CLI self-replace
+    stack/                      compose render, build, up/down
+
+.github/workflows/
+  ci.yml                        lint / typecheck / build / vet on every PR
+  tag.yml                       mobile-friendly "cut a tag" button
+  release.yml                   goreleaser: six binaries + checksums.txt
+  pages.yml                     docs/pages/ → GitHub Pages
 ```
 
-## Release pipeline
+## Hardening shipped in v0.1.24
 
-1. `tag.yml` creates + pushes a git tag on `main`, then dispatches
-   `release.yml` against it.
-2. `release.yml` runs goreleaser to build six binaries + `checksums.txt`
-   and attaches them to a GitHub Release.
-3. `pages.yml` publishes `docs/pages/` on every push to `main` that
-   touches that directory.
-4. Bootstrap shims resolve the latest tag via the `/releases/latest` HTML
-   redirect (no API rate limits), download + SHA256-verify the matching
-   binary, drop it in `~/.octopus/bin` (or `%LOCALAPPDATA%\Octopus\bin`),
-   and `exec octopus install` with stdin wired to `/dev/tty`.
-
-## Notable architecture decisions
-
-- **One install per user** keyed off `~/.octopus` (`%USERPROFILE%\.octopus`
-  on Windows).
-- **Source-tarball flow.** Installer pulls
-  `https://codeload.github.com/<repo>/tar.gz/refs/tags/vX.Y.Z` and builds
-  locally so the user's chosen subpath can be baked into the build
-  (`OCTOPUS_BASE_PATH` → Next's `basePath`).
-- **`octopus update`** is the single upgrade command. If the CLI itself is
-  out of date, `selfupdate` SHA256-verifies + atomically replaces the
-  running binary and `syscall.Exec`s into it; then the new CLI rebuilds
-  the app.
-- **Docker compose project = `octopus`**, container = `octopus-web`. Every
-  call pins `-p octopus`, so `octopus uninstall` wipes everything.
-- **Domain → Caddy** (Linux only). Wizard domain answer → Caddyfile
-  `reverse_proxy 127.0.0.1:<port>` + LE TLS on first request. Mac/Windows
-  skip the domain question.
-- **Installer uses stdlib only.** `go.sum` stays empty on purpose — trivial
-  release audit.
+| Area | Before | After |
+| --- | --- | --- |
+| TokenGate | Shows "success" but no cookie, no session, dead end | Sets HMAC-signed cookie, middleware redirects to dashboard |
+| verify-token rate limit | none | 10/min/IP, 429 with Retry-After |
+| `octopus uninstall` Caddy | `rm -f` regardless of ownership | Marker-check + `.bak` restore |
+| Tarball extraction | `Contains(rel, "..")` substring check | `filepath.Clean` + prefix verify; 200 MiB size cap |
+| Wizard validation | `domain` must contain `.`, no space; `basePath` starts with `/` | Strict regex — no YAML/Caddyfile injection surface |
+| Docker compose detection | v2 only; fails on v1-only hosts | v2 plugin preferred, v1 standalone fallback |
+| Windows PATH hint | Skipped entirely | Prints PowerShell + cmd one-liners |
+| `config.json` write | Bare `WriteFile` (torn write on crash) | Temp + atomic rename |
+| Install flow | `state.Save` after Caddy — Caddy fail = orphaned install | `state.Save` before Caddy |
+| CI | None | `.github/workflows/ci.yml` on every PR |
 
 ## Gaps / known follow-ups
 
-- **No test suite** on either side (`apps/web` or `installer/`).
-- **`packages/`** directory is declared in `pnpm-workspace.yaml` but does
-  not exist yet — reserved for shared libs.
-- Landing page is a single route; no multi-page app yet.
-- TokenGate only gates the landing page. There is no admin area behind it
-  to access once the token matches — "ok" is currently a dead end.
+- **No test suite** on either side (`apps/web` or `installer/`). CI runs
+  static checks only.
+- **`packages/`** declared in `pnpm-workspace.yaml` but does not exist.
+  Reserved for shared libs.
+- **Dashboard is intentionally bare** — the authenticated area just shows
+  the logo + a logout button. Real features grow here next.
+- **Source tarball integrity** still rides on GitHub TLS alone; the CLI
+  binary has defence-in-depth via checksums.txt but the source does not.
+- **No `octopus logs` command** — users still need to know about
+  `docker logs octopus-web`.
 
 ## Toolchain
 

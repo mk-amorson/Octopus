@@ -84,6 +84,15 @@ func Install() error {
 		return fmt.Errorf("docker up failed: %w", err)
 	}
 
+	// Persist state BEFORE the optional Caddy step. That way a Caddy
+	// failure (or a crash on write) still leaves the user with a
+	// correctly-recorded install — `octopus status` and `octopus update`
+	// won't think the machine is empty just because the proxy leg
+	// tripped.
+	if err := state.Save(cfg); err != nil {
+		return err
+	}
+
 	// Front Octopus with Caddy + HTTPS only after the container is up, so
 	// the proxy has something to proxy to. Caddy failures shouldn't roll
 	// back the install — the app still runs on the loopback port, and the
@@ -95,10 +104,6 @@ func Install() error {
 			fmt.Printf("Octopus is still running on http://127.0.0.1:%d%s — you can finish the proxy by hand.\n",
 				cfg.Port, cfg.BasePath)
 		}
-	}
-
-	if err := state.Save(cfg); err != nil {
-		return err
 	}
 
 	fmt.Println()

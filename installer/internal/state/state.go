@@ -100,6 +100,8 @@ func Load() (*Config, error) {
 }
 
 // Save persists config.json, creating the state dir on first use.
+// Writes to a sibling tempfile and renames on top — a mid-write crash
+// leaves the previous config intact instead of a truncated file.
 func Save(c *Config) error {
 	d, err := Dir()
 	if err != nil {
@@ -113,9 +115,17 @@ func Save(c *Config) error {
 	if err != nil {
 		return err
 	}
-	// 0600: config has no real secrets today, but keep the door closed in
-	// case we add any later (e.g. admin tokens).
-	return os.WriteFile(p, data, 0o600)
+	tmp := p + ".tmp"
+	// 0600: config holds the admin token. `rename` is atomic on the same
+	// filesystem, so a reader never sees a half-written file.
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // Remove wipes the entire state directory. Used by `octopus uninstall`.
