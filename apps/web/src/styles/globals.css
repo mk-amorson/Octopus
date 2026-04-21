@@ -31,13 +31,29 @@ body {
   image-rendering: pixelated;
 }
 
-/* TokenGate input: placeholder colour comes from a CSS custom
-   property the React component sets per status; hide it on focus
-   so it doesn't sit on top of the caret. */
+/* TokenGate input: muted placeholder for the idle "enter token" prompt;
+   hidden on focus so it doesn't sit on top of the caret. */
 .token-gate-input::placeholder {
-  color: var(--placeholder-color, #ffffff66);
+  color: #ffffff66;
   opacity: 1;
 }
 .token-gate-input:focus::placeholder {
   color: transparent;
+}
+
+/* Result/checking message that pops in over the input on every
+   non-idle status. Keyed by `status` in the React component so it
+   replays on each transition. */
+@keyframes token-gate-overlay-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.token-gate-overlay {
+  animation: token-gate-overlay-in 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }

@@ -2,17 +2,19 @@
 
 // TokenGate — single full-width input under the <Logo>. No button.
 // Octopus admin tokens are exactly 64 hex chars (see
-// installer/internal/token/token.go), so the moment the input
-// reaches that length we POST /api/verify-token automatically.
+// installer/internal/token/token.go), so when the input reaches that
+// length we POST /api/verify-token automatically.
 //
-// State surfaces inside the input itself:
-//   idle      "enter token" placeholder, white border
-//   checking  animated "checking..." placeholder, neutral border
-//   ok        "success" placeholder, green border
-//   bad       "wrong token" placeholder, red border
+// State surfacing:
+//   idle      "enter token" placeholder, white border, value visible.
+//   checking  border neutral, value fades to transparent, animated
+//             "checking..." overlay fades in.
+//   ok        border green, "success" overlay fades in.
+//   bad       border red, "wrong token" overlay fades in.
 //
-// On any keystroke after a result the input drops back to idle so
-// the user can retry without UI furniture.
+// Result appears the instant the request resolves — no blur required,
+// no second click. Any keystroke in a non-checking state drops back to
+// idle so the user can retry.
 
 import { useState, useRef, useEffect, type CSSProperties } from "react";
 
@@ -23,46 +25,42 @@ const TOKEN_LENGTH = 64;
 // under the logo at any viewport.
 const LOGO_TRIMMED_EM = 2.8125;
 
-// Top edge sits roughly where the previous gate's bottom edge was
-// — about an input height of breathing room from the descender of
-// "p". A literal "input height" calc works out to ~0.3em logo; we
-// round up to 0.375 so the seam doesn't kiss the descender.
-const TOP_GAP_EM = 0.375;
+// Tight gap between the logo's "p" descender and the gate's top edge —
+// roughly two logo pixels.
+const TOP_GAP_EM = 0.125;
 
-// Inner content shrinks to a fraction of the logo so it stays
-// readable across the viewport-driven logo size.
+// Inner content scale — same fraction the version badge uses.
 const INNER_FONT_EM = 0.2;
 
 // Next.js doesn't auto-prefix fetch strings the way it does Link
-// hrefs, so we have to bake basePath in client-side ourselves.
+// hrefs. Bake basePath in client-side ourselves.
 const BASE_PATH = process.env.NEXT_PUBLIC_OCTOPUS_BASE_PATH ?? "";
 
 type Status = "idle" | "checking" | "ok" | "bad";
 
-const PLACEHOLDER: Record<Status, string> = {
-  idle: "enter token",
-  checking: "checking",
-  ok: "success",
-  bad: "wrong token",
-};
 const BORDER: Record<Status, string> = {
   idle: "#ffffff44",
   checking: "#ffffff44",
   ok: "#6ce26c",
   bad: "#e26c6c",
 };
-const PLACEHOLDER_COLOR: Record<Status, string> = {
-  idle: "#ffffff66",
+const OVERLAY_COLOR: Record<Status, string> = {
+  idle: "transparent",
   checking: "#ffffffaa",
   ok: "#6ce26c",
   bad: "#e26c6c",
+};
+const OVERLAY_TEXT: Record<Status, string> = {
+  idle: "",
+  checking: "checking",
+  ok: "success",
+  bad: "wrong token",
 };
 
 export function TokenGate() {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
-  // Tick counter that drives the "..." spinner animation while
-  // status === "checking". Cleared as soon as we leave that state.
+  // Tick counter that animates the "..." spinner while checking.
   const [tick, setTick] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -80,11 +78,7 @@ export function TokenGate() {
   }, [status]);
 
   function handleChange(raw: string) {
-    // Any keystroke from a non-idle result clears the colour and
-    // lets the user keep typing.
-    if (status === "ok" || status === "bad") {
-      setStatus("idle");
-    }
+    if (status === "ok" || status === "bad") setStatus("idle");
     if (status === "checking") return;
     const next = raw.slice(0, TOKEN_LENGTH);
     setValue(next);
@@ -105,24 +99,28 @@ export function TokenGate() {
     } catch {
       setStatus("bad");
     }
-    // Always clear so the placeholder ("success" / "wrong token") is
-    // visible without the user's input on top of it.
+    // Keep value out of the way once we have a verdict; if user wants
+    // to retry, they type and we drop back to idle which makes the
+    // text visible again.
     setValue("");
   }
 
-  const placeholderText =
+  const overlayText =
     status === "checking"
       ? `checking${".".repeat((tick % 3) + 1)}`
-      : PLACEHOLDER[status];
+      : OVERLAY_TEXT[status];
 
-  // CSS custom property feeds globals.css's ::placeholder rule,
-  // which is the only way to colour placeholder text without
-  // shipping a separate CSS-in-JS layer.
-  const inputStyle: CSSProperties & Record<"--placeholder-color", string> = {
+  const wrapperStyle: CSSProperties = {
+    position: "relative",
+    width: `${LOGO_TRIMMED_EM}em`,
+    marginTop: `${TOP_GAP_EM}em`,
+  };
+
+  const inputStyle: CSSProperties = {
     width: "100%",
     background: "transparent",
-    color: "#ffffff",
-    caretColor: "#ffffff",
+    color: status === "idle" ? "#ffffff" : "transparent",
+    caretColor: status === "idle" ? "#ffffff" : "transparent",
     border: `1px solid ${BORDER[status]}`,
     outline: "none",
     padding: "0 0.5em",
@@ -130,23 +128,28 @@ export function TokenGate() {
     fontSize: `${INNER_FONT_EM}em`,
     lineHeight: 1.5,
     boxSizing: "border-box",
-    transition: "border-color 120ms ease",
-    "--placeholder-color": PLACEHOLDER_COLOR[status],
+    transition: "border-color 200ms ease, color 200ms ease",
+  };
+
+  const overlayStyle: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: OVERLAY_COLOR[status],
+    fontSize: `${INNER_FONT_EM}em`,
+    lineHeight: 1.5,
+    pointerEvents: "none",
   };
 
   return (
-    <div
-      className="font-pixel"
-      // No fontSize override here on purpose: width is in em of the
-      // *logo*'s font-size (inherited from the parent column), so
-      // 2.8125em really is the trimmed logo width.
-      style={{ width: `${LOGO_TRIMMED_EM}em`, marginTop: `${TOP_GAP_EM}em` }}
-    >
+    <div className="font-pixel" style={wrapperStyle}>
       <input
         type="text"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder={placeholderText}
+        placeholder={status === "idle" ? "enter token" : ""}
         readOnly={status === "checking"}
         autoComplete="off"
         spellCheck={false}
@@ -156,6 +159,17 @@ export function TokenGate() {
         className="token-gate-input"
         style={inputStyle}
       />
+      {status !== "idle" ? (
+        // key={status} so each transition (idle→checking→ok|bad)
+        // remounts the overlay and replays the fade-in animation.
+        <div
+          key={status}
+          className="token-gate-overlay"
+          style={overlayStyle}
+        >
+          {overlayText}
+        </div>
+      ) : null}
     </div>
   );
 }
