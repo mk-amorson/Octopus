@@ -1,50 +1,58 @@
 "use client";
 
-// TokenGate sits beneath the <Logo>. Single full-width input, no
-// submit button: the moment the user has typed (or pasted) all
-// TOKEN_LENGTH characters we POST to /api/verify-token automatically.
-// While the request is in flight, the input shows a pixel-style
-// "checking" indicator. On 200 the border turns green and "success"
-// stays in the box; on anything else the border turns red and
-// "wrong token" replaces the value.
+// TokenGate — single full-width input under the <Logo>. No button.
+// Octopus admin tokens are exactly 64 hex chars (see
+// installer/internal/token/token.go), so the moment the input
+// reaches that length we POST /api/verify-token automatically.
+//
+// State surfaces inside the input itself:
+//   idle      "enter token" placeholder, white border
+//   checking  animated "checking..." placeholder, neutral border
+//   ok        "success" placeholder, green border
+//   bad       "wrong token" placeholder, red border
+//
+// On any keystroke after a result the input drops back to idle so
+// the user can retry without UI furniture.
 
-import { useState, useRef, type CSSProperties } from "react";
+import { useState, useRef, useEffect, type CSSProperties } from "react";
 
-// Octopus admin tokens are always exactly this long: 32 random bytes,
-// hex-encoded → 64 characters. See installer/internal/token/token.go.
 const TOKEN_LENGTH = 64;
 
-// Same derivation as in TokenGate v0.1.14 — width matches the trimmed
-// rendered "Octopus" so the input sits flush under the logo.
-//
-//   "Octop" = 2.1875em + "us" = 0.75em → 2.9375em total. The logo's
-//   own h1 trim (-0.125em) is accounted for in the parent column.
-const TOTAL_EM = 2.9375;
+// Width matches the trimmed render of "Octopus" (LOGO_EM_WIDTH minus
+// the 1em horizontal padding cushion) so the input lines up exactly
+// under the logo at any viewport.
+const LOGO_TRIMMED_EM = 2.8125;
 
-// Top edge of the input lands roughly where the previous gate's
-// bottom edge was — i.e. ~ one input-height down from the logo —
-// so there's room to breathe between the two.
+// Top edge sits roughly where the previous gate's bottom edge was
+// — about an input height of breathing room from the descender of
+// "p". A literal "input height" calc works out to ~0.3em logo; we
+// round up to 0.375 so the seam doesn't kiss the descender.
 const TOP_GAP_EM = 0.375;
 
-// Inner content scaled to a fraction of the logo so it stays
-// readable at any viewport-derived logo size.
+// Inner content shrinks to a fraction of the logo so it stays
+// readable across the viewport-driven logo size.
 const INNER_FONT_EM = 0.2;
 
-// Both client and server trim before comparing, but the API URL
-// itself needs the basePath because Next.js doesn't auto-prefix
-// fetch strings.
+// Next.js doesn't auto-prefix fetch strings the way it does Link
+// hrefs, so we have to bake basePath in client-side ourselves.
 const BASE_PATH = process.env.NEXT_PUBLIC_OCTOPUS_BASE_PATH ?? "";
 
 type Status = "idle" | "checking" | "ok" | "bad";
 
-const BORDER_FOR: Record<Status, string> = {
+const PLACEHOLDER: Record<Status, string> = {
+  idle: "enter token",
+  checking: "checking",
+  ok: "success",
+  bad: "wrong token",
+};
+const BORDER: Record<Status, string> = {
   idle: "#ffffff44",
   checking: "#ffffff44",
   ok: "#6ce26c",
   bad: "#e26c6c",
 };
-const TEXT_FOR: Record<Status, string> = {
-  idle: "#ffffff",
+const PLACEHOLDER_COLOR: Record<Status, string> = {
+  idle: "#ffffff66",
   checking: "#ffffffaa",
   ok: "#6ce26c",
   bad: "#e26c6c",
@@ -53,109 +61,99 @@ const TEXT_FOR: Record<Status, string> = {
 export function TokenGate() {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
-  // Tick counter that drives the "..." spinner animation. setInterval
-  // updates it once per beat so the pixel font cycles ".  / .. / ..."
+  // Tick counter that drives the "..." spinner animation while
+  // status === "checking". Cleared as soon as we leave that state.
   const [tick, setTick] = useState(0);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function startSpinner() {
-    if (tickRef.current) return;
-    tickRef.current = setInterval(() => setTick((t) => t + 1), 250);
-  }
-  function stopSpinner() {
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
+  useEffect(() => {
+    if (status !== "checking") {
+      if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
+      return;
+    }
+    tickRef.current = setInterval(() => setTick((t) => t + 1), 250);
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+      tickRef.current = null;
+    };
+  }, [status]);
+
+  function handleChange(raw: string) {
+    // Any keystroke from a non-idle result clears the colour and
+    // lets the user keep typing.
+    if (status === "ok" || status === "bad") {
+      setStatus("idle");
+    }
+    if (status === "checking") return;
+    const next = raw.slice(0, TOKEN_LENGTH);
+    setValue(next);
+    if (next.length === TOKEN_LENGTH) {
+      void verify(next);
     }
   }
 
   async function verify(token: string) {
     setStatus("checking");
-    startSpinner();
     try {
       const res = await fetch(`${BASE_PATH}/api/verify-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      if (res.ok) {
-        setStatus("ok");
-      } else {
-        setStatus("bad");
-      }
+      setStatus(res.ok ? "ok" : "bad");
     } catch {
       setStatus("bad");
-    } finally {
-      stopSpinner();
     }
+    // Always clear so the placeholder ("success" / "wrong token") is
+    // visible without the user's input on top of it.
+    setValue("");
   }
 
-  function onChange(raw: string) {
-    // If the user starts typing again after a result, clear the
-    // result colours and let them try a new value.
-    if (status === "bad" || status === "ok") {
-      setStatus("idle");
-    }
-    // Restrict to the alphabet of a hex token so paste-from-anywhere
-    // doesn't accept an obviously-wrong value (e.g. with quotes).
-    // Also caps length at TOKEN_LENGTH so the auto-verify trigger
-    // is unambiguous.
-    const cleaned = raw.replace(/[^0-9a-fA-F]/g, "").slice(0, TOKEN_LENGTH);
-    setValue(cleaned);
-    if (cleaned.length === TOKEN_LENGTH) {
-      void verify(cleaned);
-    }
-  }
+  const placeholderText =
+    status === "checking"
+      ? `checking${".".repeat((tick % 3) + 1)}`
+      : PLACEHOLDER[status];
 
-  // What's actually rendered inside the box. We swap the input out
-  // for read-only text in the success/failure states so the message
-  // is visible regardless of mask/colour.
-  let display: string;
-  if (status === "ok") display = "success";
-  else if (status === "bad") display = "wrong token";
-  else if (status === "checking") {
-    const dots = ".".repeat((tick % 3) + 1);
-    display = `checking${dots}`;
-  } else display = value;
-
-  const wrapperStyle: CSSProperties = {
-    width: `${TOTAL_EM}em`,
-    marginTop: `${TOP_GAP_EM}em`,
-    fontSize: `${INNER_FONT_EM}em`,
-  };
-  const inputStyle: CSSProperties = {
+  // CSS custom property feeds globals.css's ::placeholder rule,
+  // which is the only way to colour placeholder text without
+  // shipping a separate CSS-in-JS layer.
+  const inputStyle: CSSProperties & Record<"--placeholder-color", string> = {
     width: "100%",
     background: "transparent",
-    color: TEXT_FOR[status],
-    border: `1px solid ${BORDER_FOR[status]}`,
+    color: "#ffffff",
+    caretColor: "#ffffff",
+    border: `1px solid ${BORDER[status]}`,
     outline: "none",
     padding: "0 0.5em",
     fontFamily: "inherit",
-    fontSize: "inherit",
+    fontSize: `${INNER_FONT_EM}em`,
     lineHeight: 1.5,
     boxSizing: "border-box",
-    // CSS transition so the colour swap doesn't snap.
-    transition: "border-color 120ms ease, color 120ms ease",
+    transition: "border-color 120ms ease",
+    "--placeholder-color": PLACEHOLDER_COLOR[status],
   };
 
-  // Lock the field while we're checking / showing a non-idle result —
-  // re-typing is allowed only by clicking back into idle, which we do
-  // automatically on key input above.
-  const editable = status === "idle";
-
   return (
-    <div className="font-pixel" style={wrapperStyle}>
+    <div
+      className="font-pixel"
+      // No fontSize override here on purpose: width is in em of the
+      // *logo*'s font-size (inherited from the parent column), so
+      // 2.8125em really is the trimmed logo width.
+      style={{ width: `${LOGO_TRIMMED_EM}em`, marginTop: `${TOP_GAP_EM}em` }}
+    >
       <input
         type="text"
-        value={editable ? value : display}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="enter token"
-        readOnly={!editable}
+        value={value}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder={placeholderText}
+        readOnly={status === "checking"}
         autoComplete="off"
         spellCheck={false}
         autoCapitalize="none"
         autoCorrect="off"
         aria-label="admin token"
+        className="token-gate-input"
         style={inputStyle}
       />
     </div>
