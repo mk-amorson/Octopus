@@ -61,7 +61,7 @@ extends it; `apps/web` adds the `@/*` → `./src/*` alias.
 Next.js 14 App Router + React 18 + Tailwind. Today a single landing page.
 
 - `src/components/Logo.tsx` is the reusable wordmark component. Its size
-  is `100vmin / 3.8125` — derived from the octopus-pixel glyph widths +
+  is `100vmin / 3.9375` — derived from the octopus-pixel glyph widths +
   an 8-font-pixel padding on each side — so the logo's bounding box
   hugs the short edge of any viewport. `vmin` makes that immune to
   orientation changes: rotate a phone portrait↔landscape and the
