@@ -1,149 +1,163 @@
 "use client";
 
-// TokenGate is the input + verify-button pair that sits right below
-// the <Logo>. The outer box is sized in em of the *logo's* font-size
-// (inherited from the wrapping column), so the split lines up under
-// "Octop" and "us" regardless of viewport. The actual text content
-// is rendered at a small fraction of that size.
+// TokenGate sits beneath the <Logo>. Single full-width input, no
+// submit button: the moment the user has typed (or pasted) all
+// TOKEN_LENGTH characters we POST to /api/verify-token automatically.
+// While the request is in flight, the input shows a pixel-style
+// "checking" indicator. On 200 the border turns green and "success"
+// stays in the box; on anything else the border turns red and
+// "wrong token" replaces the value.
 
-import { useState, type CSSProperties } from "react";
+import { useState, useRef, type CSSProperties } from "react";
 
-// Glyph advance widths in em (UPM = 1024). Same derivation as
-// LOGO_EM_WIDTH in Logo.tsx, split in two:
+// Octopus admin tokens are always exactly this long: 32 random bytes,
+// hex-encoded → 64 characters. See installer/internal/token/token.go.
+const TOKEN_LENGTH = 64;
+
+// Same derivation as in TokenGate v0.1.14 — width matches the trimmed
+// rendered "Octopus" so the input sits flush under the logo.
 //
-//   "Octop" = O+c+t+o+p = 2240 / 1024 = 2.1875 em  (input slot)
-//   "us"    = u+s       =  896 / 1024 = 0.875  em, minus the 0.125 em
-//                         trim applied to the logo's last letter =
-//                         0.75 em                  (button slot)
-const INPUT_EM = 2.1875;
-const BUTTON_EM = 0.75;
-const TOTAL_EM = INPUT_EM + BUTTON_EM;
+//   "Octop" = 2.1875em + "us" = 0.75em → 2.9375em total. The logo's
+//   own h1 trim (-0.125em) is accounted for in the parent column.
+const TOTAL_EM = 2.9375;
 
-// One logo-pixel (64/1024 em) of vertical breathing room between the
-// logo baseline and the gate's top edge.
-const TOP_GAP_EM = 0.0625;
+// Top edge of the input lands roughly where the previous gate's
+// bottom edge was — i.e. ~ one input-height down from the logo —
+// so there's room to breathe between the two.
+const TOP_GAP_EM = 0.375;
 
-// Inner text content (placeholder, button glyph, error message) is
-// scaled down relative to the logo so it reads comfortably at the
-// viewport-driven logo size.
+// Inner content scaled to a fraction of the logo so it stays
+// readable at any viewport-derived logo size.
 const INNER_FONT_EM = 0.2;
 
-// Baked in at build time (see apps/web/Dockerfile). When Next.js is
-// served under a basePath (e.g. "/octopus"), the app's API routes live
-// at `${basePath}/api/*` too — but fetch() doesn't know about basePath,
-// so we have to prepend it manually here.
+// Both client and server trim before comparing, but the API URL
+// itself needs the basePath because Next.js doesn't auto-prefix
+// fetch strings.
 const BASE_PATH = process.env.NEXT_PUBLIC_OCTOPUS_BASE_PATH ?? "";
 
 type Status = "idle" | "checking" | "ok" | "bad";
 
+const BORDER_FOR: Record<Status, string> = {
+  idle: "#ffffff44",
+  checking: "#ffffff44",
+  ok: "#6ce26c",
+  bad: "#e26c6c",
+};
+const TEXT_FOR: Record<Status, string> = {
+  idle: "#ffffff",
+  checking: "#ffffffaa",
+  ok: "#6ce26c",
+  bad: "#e26c6c",
+};
+
 export function TokenGate() {
   const [value, setValue] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  // Tick counter that drives the "..." spinner animation. setInterval
+  // updates it once per beat so the pixel font cycles ".  / .. / ..."
+  const [tick, setTick] = useState(0);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function verify() {
-    // Trim so a stray newline or surrounding space from a terminal
-    // copy-paste doesn't false-fail the comparison.
-    const trimmed = value.trim();
-    if (!trimmed || status === "checking") return;
+  function startSpinner() {
+    if (tickRef.current) return;
+    tickRef.current = setInterval(() => setTick((t) => t + 1), 250);
+  }
+  function stopSpinner() {
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+  }
+
+  async function verify(token: string) {
     setStatus("checking");
+    startSpinner();
     try {
       const res = await fetch(`${BASE_PATH}/api/verify-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: trimmed }),
+        body: JSON.stringify({ token }),
       });
       if (res.ok) {
         setStatus("ok");
       } else {
         setStatus("bad");
-        setValue("");
       }
     } catch {
       setStatus("bad");
-      setValue("");
+    } finally {
+      stopSpinner();
     }
   }
 
-  const buttonGlyph =
-    status === "ok" ? "\u2713" : status === "bad" ? "\u2715" : "\u2192";
+  function onChange(raw: string) {
+    // If the user starts typing again after a result, clear the
+    // result colours and let them try a new value.
+    if (status === "bad" || status === "ok") {
+      setStatus("idle");
+    }
+    // Restrict to the alphabet of a hex token so paste-from-anywhere
+    // doesn't accept an obviously-wrong value (e.g. with quotes).
+    // Also caps length at TOKEN_LENGTH so the auto-verify trigger
+    // is unambiguous.
+    const cleaned = raw.replace(/[^0-9a-fA-F]/g, "").slice(0, TOKEN_LENGTH);
+    setValue(cleaned);
+    if (cleaned.length === TOKEN_LENGTH) {
+      void verify(cleaned);
+    }
+  }
 
-  // Wrapper stays at the logo's font-size so `em` widths track the
-  // logo's glyph widths. Inner flex drops to INNER_FONT_EM for
-  // readable text content.
+  // What's actually rendered inside the box. We swap the input out
+  // for read-only text in the success/failure states so the message
+  // is visible regardless of mask/colour.
+  let display: string;
+  if (status === "ok") display = "success";
+  else if (status === "bad") display = "wrong token";
+  else if (status === "checking") {
+    const dots = ".".repeat((tick % 3) + 1);
+    display = `checking${dots}`;
+  } else display = value;
+
   const wrapperStyle: CSSProperties = {
     width: `${TOTAL_EM}em`,
     marginTop: `${TOP_GAP_EM}em`,
-  };
-  const rowStyle: CSSProperties = {
-    display: "flex",
     fontSize: `${INNER_FONT_EM}em`,
   };
-  const cellBase: CSSProperties = {
+  const inputStyle: CSSProperties = {
+    width: "100%",
     background: "transparent",
-    border: "1px solid #ffffff44",
+    color: TEXT_FOR[status],
+    border: `1px solid ${BORDER_FOR[status]}`,
     outline: "none",
+    padding: "0 0.5em",
     fontFamily: "inherit",
     fontSize: "inherit",
     lineHeight: 1.5,
     boxSizing: "border-box",
+    // CSS transition so the colour swap doesn't snap.
+    transition: "border-color 120ms ease, color 120ms ease",
   };
+
+  // Lock the field while we're checking / showing a non-idle result —
+  // re-typing is allowed only by clicking back into idle, which we do
+  // automatically on key input above.
+  const editable = status === "idle";
 
   return (
     <div className="font-pixel" style={wrapperStyle}>
-      <div style={rowStyle}>
-        <input
-          type="password"
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            if (status !== "idle") setStatus("idle");
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") verify();
-          }}
-          aria-label="admin token"
-          autoComplete="off"
-          spellCheck={false}
-          style={{
-            ...cellBase,
-            flex: `${INPUT_EM} 0 0`,
-            color: "#fff",
-            padding: "0 0.5em",
-          }}
-        />
-        <button
-          type="button"
-          onClick={verify}
-          aria-label="verify token"
-          style={{
-            ...cellBase,
-            flex: `${BUTTON_EM} 0 0`,
-            borderLeft: "none",
-            cursor: "pointer",
-            color:
-              status === "ok"
-                ? "#6ce26c"
-                : status === "bad"
-                ? "#e26c6c"
-                : "#fff",
-          }}
-        >
-          {buttonGlyph}
-        </button>
-      </div>
-      {status === "bad" ? (
-        <p
-          style={{
-            color: "#e26c6c",
-            margin: 0,
-            marginTop: "0.25em",
-            fontSize: `${INNER_FONT_EM}em`,
-            lineHeight: 1.2,
-          }}
-        >
-          token mismatch
-        </p>
-      ) : null}
+      <input
+        type="text"
+        value={editable ? value : display}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="enter token"
+        readOnly={!editable}
+        autoComplete="off"
+        spellCheck={false}
+        autoCapitalize="none"
+        autoCorrect="off"
+        aria-label="admin token"
+        style={inputStyle}
+      />
     </div>
   );
 }
