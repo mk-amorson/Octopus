@@ -19,8 +19,12 @@ WORKDIR /repo
 
 # Subpath the app is mounted under. Baked into the build because Next.js
 # basePath is a build-time concern — asset URLs resolve against it.
+# Also exposed to client JS as NEXT_PUBLIC_* so fetch() calls from
+# client components can prepend it (Next.js auto-prefixes <Link> and
+# asset URLs, but not ad-hoc fetch strings).
 ARG OCTOPUS_BASE_PATH=""
 ENV OCTOPUS_BASE_PATH=$OCTOPUS_BASE_PATH
+ENV NEXT_PUBLIC_OCTOPUS_BASE_PATH=$OCTOPUS_BASE_PATH
 
 # App version string shown under the Octopus logo so users can tell at a
 # glance which release they are running. Embedded at build time via
