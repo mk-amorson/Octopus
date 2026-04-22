@@ -1,0 +1,16 @@
+{
+  "name": "octopus",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @octopus/web dev",
+    "build": "pnpm --filter @octopus/web build",
+    "start": "pnpm --filter @octopus/web start",
+    "lint": "pnpm --filter @octopus/web lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

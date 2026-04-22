@@ -1,0 +1,79 @@
+name: Release
+
+# Fires either on a direct `v*` tag push, or on an explicit dispatch with
+# the tag passed in. We never rely on `github.ref` for dispatches because
+# the Actions UI defaults to the default branch — an easy way to end up
+# running goreleaser against `main` with a stale tag pointing elsewhere,
+# which goreleaser correctly refuses.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (must exist; `v` prefix added if missing)"
+        required: true
+        default: "v0.1.1"
+
+permissions:
+  contents: write   # needed to create the GitHub Release and upload assets
+
+jobs:
+  release:
+    name: Build and publish installer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve ref
+        id: ref
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT:     ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ -z "$INPUT_TAG" ]; then
+              echo "::error::tag input is required"
+              exit 1
+            fi
+            # Normalise: accept "0.1.1" and treat it as "v0.1.1" so a small
+            # UI typo isn't a whole new workflow failure.
+            tag="$INPUT_TAG"
+            case "$tag" in v*) ;; *) tag="v$tag" ;; esac
+            # Verify the tag exists on the remote BEFORE actions/checkout
+            # tries to fetch it — otherwise failure is an opaque "pathspec
+            # did not match".
+            if ! git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "::error::tag '$tag' does not exist. Create it first (Actions → Tag release)"
+              exit 1
+            fi
+            ref="refs/tags/$tag"
+          else
+            ref="$GITHUB_REF"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "::notice::building ref=$ref"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0   # goreleaser reads tags for changelog
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: installer/go.mod
+          cache-dependency-path: installer/go.sum
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          workdir: installer
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

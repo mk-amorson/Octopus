@@ -1,0 +1,94 @@
+name: Tag release
+
+# Two ways to cut a release:
+#   1. Edit .github/RELEASE_VERSION on main to the new "vX.Y.Z" string
+#      and commit. This workflow picks the value up on push and creates
+#      the matching tag.
+#   2. Run from Actions → "Tag release" → "Run workflow", type a
+#      version, hit go.
+#
+# Either path ends with the same dispatch into release.yml.
+#
+# Why dispatch explicitly? GitHub's GITHUB_TOKEN is intentionally
+# prevented from triggering other workflows via `push` events to avoid
+# recursion — pushing the tag alone wouldn't kick off `release.yml`.
+# workflow_dispatch is the documented exception: it DOES fire when the
+# GITHUB_TOKEN calls it.
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/RELEASE_VERSION"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to create (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+  actions: write   # needed to POST /actions/workflows/release.yml/dispatches
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Resolve version
+        id: ver
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ver="$INPUT_VERSION"
+          else
+            ver=$(tr -d '[:space:]' < .github/RELEASE_VERSION 2>/dev/null || true)
+          fi
+          if [ -z "$ver" ]; then
+            echo "::error::no version supplied (empty .github/RELEASE_VERSION and empty input)"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "::notice::releasing $ver"
+
+      - name: Validate and push tag
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::invalid version '$VERSION' (expected vX.Y.Z or vX.Y.Z-suffix)"
+            exit 1
+          fi
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            # On a re-push of an unchanged RELEASE_VERSION just no-op
+            # cleanly instead of failing the whole workflow.
+            echo "::notice::tag $VERSION already exists, skipping"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "$VERSION"
+
+      - name: Trigger Release workflow against the new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          # If the tag-step exited early because the tag already
+          # existed, skip dispatch too; release.yml has a guard but
+          # there's no point asking it to rerun.
+          if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::warning::tag $VERSION not present; skipping release dispatch"
+            exit 0
+          fi
+          echo "::notice::dispatching release.yml for $VERSION"
+          gh workflow run release.yml --ref main -f "tag=$VERSION"

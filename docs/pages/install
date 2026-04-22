@@ -1,0 +1,146 @@
+#!/bin/sh
+# Octopus installer bootstrap (Linux + macOS).
+#
+# Served at https://mk-amorson.github.io/octopus/install  (no extension — the
+# GitHub Pages workflow publishes docs/pages/ as the site root).
+#
+# This script's job is narrow:
+#   1. figure out OS/ARCH
+#   2. resolve the latest release tag
+#   3. download the matching `octopus_<os>_<arch>` binary
+#   4. verify SHA256 against the release's checksums.txt
+#   5. drop it in ~/.octopus/bin, add that to PATH, and run `octopus install`
+#      with stdin wired to the user's terminal so the interactive wizard
+#      actually gets answers.
+#
+# Everything interactive lives in the Go binary. This shim is intentionally
+# dumb so it's auditable at a glance before piping it to `sh`.
+
+set -eu
+
+REPO="mk-amorson/octopus"
+INSTALL_DIR="${HOME}/.octopus/bin"
+BIN_PATH="${INSTALL_DIR}/octopus"
+
+die() { printf 'octopus-install: %s\n' "$*" >&2; exit 1; }
+
+detect_os() {
+  uname_s=$(uname -s)
+  case "$uname_s" in
+    Linux)  echo linux ;;
+    Darwin) echo darwin ;;
+    *) die "unsupported OS: $uname_s (Linux and macOS only; on Windows use install.ps1)" ;;
+  esac
+}
+
+detect_arch() {
+  uname_m=$(uname -m)
+  case "$uname_m" in
+    x86_64|amd64) echo amd64 ;;
+    arm64|aarch64) echo arm64 ;;
+    *) die "unsupported arch: $uname_m" ;;
+  esac
+}
+
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required but not installed"; }
+
+resolve_tag() {
+  # Follow the /releases/latest HTML redirect — no API rate limit, works
+  # behind shared NAT. --version flag: OCTOPUS_VERSION=v0.1.0 in env.
+  if [ "${OCTOPUS_VERSION:-}" != "" ]; then
+    printf '%s' "$OCTOPUS_VERSION"
+    return
+  fi
+  url="https://github.com/${REPO}/releases/latest"
+  tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$url" | sed -E 's#.*/tag/##')
+  [ -n "$tag" ] || die "could not resolve latest release tag"
+  printf '%s' "$tag"
+}
+
+main() {
+  need curl
+  need uname
+  need mkdir
+  need chmod
+
+  os=$(detect_os)
+  arch=$(detect_arch)
+  tag=$(resolve_tag)
+  asset="octopus_${os}_${arch}"
+  base="https://github.com/${REPO}/releases/download/${tag}"
+
+  mkdir -p "$INSTALL_DIR"
+
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+
+  printf 'octopus-install: downloading %s %s/%s\n' "$tag" "$os" "$arch"
+  curl -fsSL "${base}/${asset}"       -o "${tmp}/${asset}"
+  curl -fsSL "${base}/checksums.txt"  -o "${tmp}/checksums.txt"
+
+  printf 'octopus-install: verifying checksum\n'
+  # Extract the one line for our asset, then use whichever sha256 tool exists.
+  want=$(grep " ${asset}$" "${tmp}/checksums.txt" | awk '{print $1}')
+  [ -n "$want" ] || die "no checksum entry for $asset in checksums.txt"
+  if command -v sha256sum >/dev/null 2>&1; then
+    got=$(sha256sum "${tmp}/${asset}" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    got=$(shasum -a 256 "${tmp}/${asset}" | awk '{print $1}')
+  else
+    die "need sha256sum or shasum to verify download"
+  fi
+  [ "$want" = "$got" ] || die "checksum mismatch: want $want, got $got"
+
+  install -m 0755 "${tmp}/${asset}" "$BIN_PATH"
+  printf 'octopus-install: installed to %s\n' "$BIN_PATH"
+
+  # Add to PATH via shell rc, only if it isn't already wired up. These rc
+  # files are only re-read when a new shell starts, so the *current* shell
+  # still won't see the new PATH after this script exits — that's why the
+  # final banner below tells the user how to pick it up right away.
+  add_to_path() {
+    rc="$1"
+    [ -f "$rc" ] || return 0
+    if ! grep -Fq '.octopus/bin' "$rc"; then
+      printf '\n# Added by Octopus installer\nexport PATH="$HOME/.octopus/bin:$PATH"\n' >> "$rc"
+      printf 'octopus-install: added ~/.octopus/bin to PATH in %s\n' "$rc"
+    fi
+  }
+  add_to_path "$HOME/.bashrc"
+  add_to_path "$HOME/.zshrc"
+  add_to_path "$HOME/.profile"
+
+  printf '\noctopus-install: starting installer. Follow the prompts.\n\n'
+
+  # `curl ... | sh` pipes this script's stdin from curl, so if we just ran
+  # the installer here its `read` calls would hit EOF immediately and every
+  # prompt would silently take the default. Reattach stdin to the user's
+  # real terminal before handing off.
+  if [ -r /dev/tty ]; then
+    set +e
+    PATH="$INSTALL_DIR:$PATH" "$BIN_PATH" install </dev/tty
+    rc=$?
+    set -e
+  else
+    cat >&2 <<EOF
+
+octopus-install: no /dev/tty available — cannot run the interactive wizard here.
+Re-run from a real terminal, e.g.:
+
+    curl -fsSL https://mk-amorson.github.io/octopus/install -o /tmp/octopus-install
+    sh /tmp/octopus-install
+
+EOF
+    exit 1
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    printf '\n'
+    printf 'octopus-install: note — new shells will pick up `octopus` on PATH automatically.\n'
+    printf 'octopus-install: to use it in THIS shell right now, run:\n'
+    printf '\n    export PATH="$HOME/.octopus/bin:$PATH"\n\n'
+  fi
+  exit "$rc"
+}
+
+main "$@"
